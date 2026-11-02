@@ -3,7 +3,7 @@ name: babysit-pr
 description: Monitor a pull request through review and CI. Use when the user asks to monitor, watch, or babysit a PR.
 ---
 
-> Source: [t3dotgg/tstack](https://github.com/t3dotgg/tstack) @ `1085050f3baed1ac724caa4a8166145fb2ac88af` (adapted: integration branch, fix-attempt cap).
+> Source: [t3dotgg/tstack](https://github.com/t3dotgg/tstack) @ `1085050f3baed1ac724caa4a8166145fb2ac88af` (adapted: integration branch, progress-based iteration policy).
 
 # Babysit PR
 
@@ -16,10 +16,19 @@ A fix attempt is one push of code changes made to resolve a failing required
 check or an actionable review finding. Rebases, conflict-only resolutions,
 comment replies, and dismissals with a written reason do not count.
 
-Keep a ledger line in the PR description, `Fix attempts: <n>/3`,
-and update it before each fix-attempt push, so a fresh thread sees the count.
-After 3 fix attempts, do not push: report `BLOCKED` with the failing check
-or finding and what you tried.
+Keep a ledger line in the PR description, `Iterations: <n>, last progress: <what moved>`,
+and update it before each fix push, so a fresh thread sees the state.
+
+## Iteration policy (no fixed attempt cap)
+
+1. Define a verifiable done predicate before the first change.
+2. Each iteration is a fresh Codex or Claude session that starts from RUNSTATE.md and WIP commits.
+3. Make the smallest change toward the predicate and verify it. Progress: WIP commit. No progress: discard.
+4. Same failure twice: write down the shared premise, test it directly, then pivot approach or model.
+5. Environment failures (sandbox, permissions, network) do not count. Fix the tool and rerun.
+6. Limits (quota, rate, time) are budget, not failures. Wait for the reset and resume.
+7. Stop only on a no-progress plateau after a pivot, an irreversible action, or a dispute after two rounds (show both sides to the operator).
+8. A stuck item reports typed `BLOCKED` (what prevents, what was tried, what is needed) and the queue continues.
 
 ## Waiting
 

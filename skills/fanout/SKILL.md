@@ -40,12 +40,12 @@ integration branch, the per-ticket gate (tests, lint, build, required CI), and t
   `full-send`. When you would ask, stop and report `BLOCKED` with evidence.**
 - If the repo has no `verify-<app>` skill or no GitHub remote, report `BLOCKED`
   before editing.
-- Do not fan out. Stop after 3 fix attempts.
+- Do not fan out. Iterate per `babysit-pr`'s Iteration policy (no fixed cap); stop only on a plateau after a pivot, an irreversible action, or a dispute after two rounds.
 
 Report one of `INTEGRATED <sha>` or `BLOCKED <reason + evidence>`, with gate
 results.
 
 ## Final report
 
-Table: ticket, status, sha or blocker, fix attempts used. Then the day's
+Table: ticket, status, sha or typed blocker, iterations used. Then the day's
 integrated merges: `git fetch origin && git log --first-parent --since=1.day origin/<integration branch> --oneline | wc -l`.

@@ -18,7 +18,7 @@ integration branch, named in each repo's `AGENTS.md`. See [AGENTS.md](AGENTS.md)
 - **Lean review.** Self-validation with real evidence. Cross-model review only
   for high-risk changes, 1 round.
 - **Evidence from the delivered artifact before anything is published.**
-- **Hard caps.** 3 fix attempts per ticket, then block and escalate.
+- **Progress budget, not attempt caps.** Iterate while each fresh session moves the done predicate; pivot after the same failure twice; stop on a plateau after a pivot and report typed `BLOCKED`. See `skills/babysit-pr` (Iteration policy).
 - **Measure integrated merges per day.**
 
 ## End-to-end flow
@@ -47,7 +47,7 @@ ready tickets from the project's tracker (one ticket = queue of one)
 | `sol-loop` | adapted from tstack | One-round cross-model review, high-risk only |
 | `full-send` | adapted from tstack | Prove, PR, babysit, integrate, with lean review and fix cap |
 | `file-pr` | adapted from tstack | Open a real PR against the integration branch |
-| `babysit-pr` | tstack | Drive a PR to green with `pr-wait`; defines and counts fix attempts |
+| `babysit-pr` | tstack | Drive a PR to green with `pr-wait`; defines the iteration policy |
 | `leaving-pr-comments` | tstack | How to post PR comments |
 | `prove-it` | pstack `principle-prove-it-works` | Verify the real artifact before done |
 | `evidence` | adapted from rstack `evidence-driven-testing` | Local checklist, screenshots, optional video in `.artifacts/`, summary in the PR |

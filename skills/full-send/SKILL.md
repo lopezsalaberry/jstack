@@ -56,8 +56,8 @@ one appears.
    Rebase onto the latest integration branch first. Paste the `evidence` checklist
    summary into the description, FAIL lines included.
 5. **Babysit the PR** with the `babysit-pr` skill. Fix real findings and CI
-   failures. Get proof for each fix before you push it. Count fix attempts as
-   `babysit-pr` defines them; when the cap is used up, stop and report
+   failures. Get proof for each fix before you push it. Iterate per `babysit-pr`'s
+   Iteration policy; on a plateau after a pivot, stop and report typed
    `BLOCKED` with the evidence.
 6. **Merge** into the integration branch when the Merge gate passes. Do not
    hold green tickets for a batch. The wave's full build runs separately and

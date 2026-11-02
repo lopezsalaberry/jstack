@@ -11,7 +11,7 @@ integration branch, named in each repo's `AGENTS.md`. See [AGENTS.md](AGENTS.md)
 ## Principles
 
 - **Parallel by default, limited by quota.** No fixed worker count. Pause at
-  0%, never switch to another model.
+  0% on every provider; Claude at 0% falls back to Codex `gpt-6.1-sol` with a handoff.
 - **One worker per distinct ticket, one level deep.** No races, no best-of.
 - **Integrate per green ticket** into the project's integration branch. The
   wave's full build runs separately and never blocks.

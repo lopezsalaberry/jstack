@@ -34,13 +34,26 @@ Run the per-ticket gate first. Do not send code that fails its own checks.
 
 ## 2. Review
 
-Pick a reviewer from a different model family than the author. Start it with the harness's delegation tool (T3 `delegate_task`,
-Claude Code subagent, Codex subagent). If no other model family is
-reachable, report BLOCKED instead of substituting the same model.
+Pick a reviewer from a different model family than the author. Start it with
+the harness's delegation tool (T3 `delegate_task`, Claude Code subagent, Codex
+subagent). Check `$JSTACK_QUOTA_PROBE --model <reviewer model>` first.
 
-Temporary (until 2026-11-04, while Sol/Codex has no credits): the reviewer may
-be a fresh-context Claude Sonnet session that sees only the diff and the ticket
-acceptance criteria. Same brief, same 1 round.
+If the other family has no quota (probe at 0%), do not block and do not wait:
+
+- Run an independent Codex (`gpt-6.1-sol`) review in a fresh session, never
+  the author's session or thread. It sees only `git diff <base>` and the
+  ticket acceptance criteria, nothing from the author's reasoning.
+- Use the adversarial brief below plus: "Assume this diff is wrong. Your job is
+  to find the case that breaks it."
+- Deterministic gates must be green before and after (tests, lint, build,
+  `verify-<app>`). Red gate = no merge.
+- Queue a post-hoc Claude review: append one line to
+  `~/base/state/posthoc-review.queue`:
+  `<ISO date> <repo> <PR or sha> <base sha> <ticket> pending`. When Claude
+  quota returns, review it with the same brief and open a follow-up ticket for
+  any blocker or should.
+
+If neither family has quota, pause per `quota-gate`.
 
 Brief:
 

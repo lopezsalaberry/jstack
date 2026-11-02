@@ -20,8 +20,8 @@ description: "Run many independent tickets in parallel, one worker per distinct 
    files each expects to touch. One ticket is a queue of one.
    Tickets that touch the same files run one after the other, not in parallel.
 2. **Gate.** Apply `quota-gate` before each launch.
-3. **Launch** one background worker per ticket with the default model (Sonnet;
-   Opus only for design, design tools, or when the operator asks), using the harness's subagent or thread tool.
+3. **Launch** one background worker per ticket with the model `quota-gate` picks (Sonnet;
+   Opus only for design, design tools, or when the operator asks; `gpt-6.1-sol` with handoff when Claude is at 0%), using the harness's subagent or thread tool.
    Each worker runs `ticket-start` once, then `full-send`.
 4. **Drain.** As workers report, launch the next ticket. Escalate `BLOCKED`
    tickets to the operator in one consolidated message.

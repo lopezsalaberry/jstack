@@ -3,7 +3,7 @@ name: full-send
 description: Complete a ticket end to end autonomously: prove, PR, babysit, merge.
 ---
 
-> Source: [t3dotgg/tstack](https://github.com/t3dotgg/tstack) @ `1085050f3baed1ac724caa4a8166145fb2ac88af` (adapted: lean review, per-ticket gate, fix-attempt cap).
+> Source: [t3dotgg/tstack](https://github.com/t3dotgg/tstack) @ `1085050f3baed1ac724caa4a8166145fb2ac88af` (adapted: lean review, per-ticket gate, `iterate` instead of a fix-attempt cap).
 
 # Full Send
 
@@ -56,13 +56,13 @@ one appears.
    Rebase onto the latest integration branch first. Paste the `evidence` checklist
    summary into the description, FAIL lines included.
 5. **Babysit the PR** with the `babysit-pr` skill. Fix real findings and CI
-   failures. Get proof for each fix before you push it. Count fix attempts as
-   `babysit-pr` defines them; when the cap is used up, stop and report
-   `BLOCKED` with the evidence.
+   failures. Get proof for each fix before you push it. Keep going with the
+   `iterate` skill while the checks move; there is no attempt cap. Report `BLOCKED`
+   only by its stop rules, and `WAITING` when a budget runs out.
 6. **Merge** into the integration branch when the Merge gate passes. Do not
    hold green tickets for a batch. The wave's full build runs separately and
    never blocks this.
-7. **Report** in your final message: the PR link, the merge commit, your proof,
+7. **Report** in your final message, with the status vocabulary of `iterate` (`INTEGRATED`, `READY_FOR_INTEGRATOR`, `WAITING`, `BLOCKED(env|task|decision)`): the PR link, the merge commit, your proof,
    and each decision you made for the user.
 
 Stay active from step 1 to step 7. If you end your turn while checks or bots are

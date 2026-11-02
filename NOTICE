@@ -3,13 +3,16 @@ names its source and commit at the top of its SKILL.md.
 
 t3dotgg/tstack @ 1085050f3baed1ac724caa4a8166145fb2ac88af
   Skills: babysit-pr, file-pr, full-send, leaving-pr-comments, sol-loop (adapted;
-  scripts/pr-wait unchanged).
+  scripts/pr-wait unchanged). iterate draws on full-send ("ask only when you
+  cannot continue alone", smallest change) and babysit-pr (keep the PR at the
+  size the goal needs).
 
 backnotprop/pstack @ 25abb38559ddbabec563646224d09eff9a250eca
   Mirror of cursor/plugins (pstack by Poteto). https://github.com/cursor/plugins
   Skills: prove-it (from principle-prove-it-works), correct-mistakes (from
   correct), create-verify (from create-verification-skill), fanout (adapted
-  from swarm).
+  from swarm), iterate (adapted from figure-it-out, principle-attack-the-premise
+  and principle-never-block-on-the-human).
 
 michaelshimeles/rstack @ 11b15767d7587bab11f6c4957507b5f26d1785c7
   ticket-start is adapted from the steps of rstack's new-feature skill, and

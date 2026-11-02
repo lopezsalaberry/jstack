@@ -19,7 +19,8 @@ Pick the model in this order:
    `session-handoff` first (ticket, branch, state, next step) and start the
    Codex worker from it. Do not wait for Claude.
 3. Both at 0%, or a quota error on both: pause. Commit work in progress, stop
-   at a safe point, resume when either provider returns.
+   at a safe point and report `WAITING` (resume: the probe passes for either
+   provider; `iterate` explains the report). This is the only case where jstack waits.
 
 Never use OpenRouter or the Anthropic credits key for routine waves; only when
 the operator asks explicitly for that task. The probe hides them unless `--include-paid`.

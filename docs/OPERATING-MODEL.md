@@ -5,7 +5,7 @@ is the map. Where an open PR changes a skill, it is noted.
 
 ## Iteration policy (no fixed attempt cap)
 
-Replaces the old "3 fix attempts, then block" cap (see the iteration-policy PR). The skills workers
+Replaces the old "3 fix attempts, then block" cap. The skills workers
 actually read implement it: see `skills/iterate/SKILL.md` (loop, verdicts, stop rules). Until 2026-11-02
 `fanout`, `babysit-pr`, `full-send` and the `AGENTS.md` template still said "3 attempts" and workers
 obeyed them, stopping minutes into real work; `tests/test_policy.py` now keeps them from drifting.
@@ -19,7 +19,7 @@ obeyed them, stopping minutes into real work; `tests/test_policy.py` now keeps t
 - **Environment failures do not count.** A broken tool, sandbox, or harness gets
   fixed; it never consumes the ticket's budget.
 - **Limits are budget, not attempts.** Quota, rate limits, or the per-item time
-  budget. When a budget runs out, wait for the reset and resume from `RUNSTATE.md`.
+  budget. When a budget runs out the worker writes `RUNSTATE.md`, pushes a WIP commit and reports `WAITING` with an observable resume condition; the orchestrator relaunches a fresh worker from it (see `fanout`).
 - **Stop only when:** progress plateaus after a pivot, the next step is
   irreversible, or two reviewers still disagree after two rounds (show both
   positions to the owner).
@@ -61,7 +61,7 @@ A batch runner may run several items at once when they do not touch the same fil
 - **Quota before each start.** When the provider is at 0%, start nothing new, let
   running items finish, and notify the owner.
 - **Idempotent.** Items already marked done are skipped on relaunch; a BLOCKED
-  item is retried.
+  item is retried and a WAITING item is resumed from its `RUNSTATE.md`.
 
 ## Orchestrator conventions (product-owner layer)
 

@@ -62,7 +62,7 @@ one appears.
 6. **Merge** into the integration branch when the Merge gate passes. Do not
    hold green tickets for a batch. The wave's full build runs separately and
    never blocks this.
-7. **Report** in your final message: the PR link, the merge commit, your proof,
+7. **Report** in your final message, with the status vocabulary of `iterate` (`INTEGRATED`, `READY_FOR_INTEGRATOR`, `WAITING`, `BLOCKED(env|task|decision)`): the PR link, the merge commit, your proof,
    and each decision you made for the user.
 
 Stay active from step 1 to step 7. If you end your turn while checks or bots are

@@ -34,7 +34,7 @@ ready tickets from the project's tracker (one ticket = queue of one)
                            sol-loop only if high-risk (1 round)
                            file-pr, babysit-pr (fix-attempt ledger in the PR, no cap)
                            merge when the Merge gate passes
-            report INTEGRATED | BLOCKED
+            report INTEGRATED | READY_FOR_INTEGRATOR | WAITING | BLOCKED(env|task|decision)
 ```
 
 ## Skills
@@ -47,7 +47,7 @@ ready tickets from the project's tracker (one ticket = queue of one)
 | `ticket-start` | adapted from rstack `new-feature` | Scope check, then worktree and branch per ticket |
 | `quota-gate` | new | Launch or pause from model quota |
 | `sol-loop` | adapted from tstack | One-round cross-model review, high-risk only |
-| `full-send` | adapted from tstack | Prove, PR, babysit, integrate, with lean review and fix cap |
+| `full-send` | adapted from tstack | Prove, PR, babysit, integrate, with lean review and `iterate` instead of a fix cap |
 | `file-pr` | adapted from tstack | Open a real PR against the integration branch |
 | `babysit-pr` | tstack | Drive a PR to green with `pr-wait`; counts fix attempts (no cap) |
 | `iterate` | pstack + tstack | The measured loop that replaces attempt caps: hypothesis, smallest change, verdict, attack the premise, budgets are not failures |

@@ -5,7 +5,10 @@ is the map. Where an open PR changes a skill, it is noted.
 
 ## Iteration policy (no fixed attempt cap)
 
-Replaces the old "3 fix attempts, then block" cap (see the iteration-policy PR).
+Replaces the old "3 fix attempts, then block" cap (see the iteration-policy PR). The skills workers
+actually read implement it: see `skills/iterate/SKILL.md` (loop, verdicts, stop rules). Until 2026-11-02
+`fanout`, `babysit-pr`, `full-send` and the `AGENTS.md` template still said "3 attempts" and workers
+obeyed them, stopping minutes into real work; `tests/test_policy.py` now keeps them from drifting.
 
 - **Fresh session per iteration.** Each iteration starts from the ticket's
   `RUNSTATE.md` (what was tried, what is known, next step), not from chat history.

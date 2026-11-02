@@ -3,7 +3,7 @@ name: babysit-pr
 description: Monitor a pull request through review and CI. Use when the user asks to monitor, watch, or babysit a PR.
 ---
 
-> Source: [t3dotgg/tstack](https://github.com/t3dotgg/tstack) @ `1085050f3baed1ac724caa4a8166145fb2ac88af` (adapted: integration branch, fix-attempt cap).
+> Source: [t3dotgg/tstack](https://github.com/t3dotgg/tstack) @ `1085050f3baed1ac724caa4a8166145fb2ac88af` (adapted: integration branch, fix-attempt ledger without a cap; stopping rules live in `iterate`).
 
 # Babysit PR
 
@@ -16,10 +16,11 @@ A fix attempt is one push of code changes made to resolve a failing required
 check or an actionable review finding. Rebases, conflict-only resolutions,
 comment replies, and dismissals with a written reason do not count.
 
-Keep a ledger line in the PR description, `Fix attempts: <n>/3`,
-and update it before each fix-attempt push, so a fresh thread sees the count.
-After 3 fix attempts, do not push: report `BLOCKED` with the failing check
-or finding and what you tried.
+Keep a ledger line in the PR description, `Fix attempts: <n>`, and update it
+before each fix-attempt push, so a fresh thread sees the count. It is a count,
+not a cap: tstack has no limit here either. When the same check keeps failing,
+apply `iterate` (look at the shape of the failures, test the shared premise,
+pivot). Stop only by its stop rules, with a typed `BLOCKED`.
 
 ## Waiting
 

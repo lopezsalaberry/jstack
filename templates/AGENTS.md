@@ -4,7 +4,7 @@
 2. Queue = ready tickets from this project's tracker, each with the files it expects to touch.
 3. Integration branch: `develop`. Each green ticket merges there.
 4. Prove every change on the real artifact (`prove-it`, this repo's `verify-<app>`, `evidence` in `.artifacts/`, tests, lint, build). Cross-model review only for `sol-loop`'s high-risk list, 1 round.
-5. After 3 fix attempts or on quota, follow `quota-gate` (Claude 0% -> `gpt-6.1-sol` with handoff; both 0% -> stop and report).
+5. On repeated failure follow `iterate` (no attempt cap: keep going while the checks move, stop by its rules). On quota follow `quota-gate` (Claude 0% -> `gpt-6.1-sol` with handoff; both 0% -> stop and report).
 
 ## Principles
 

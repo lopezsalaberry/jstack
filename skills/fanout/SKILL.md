@@ -40,12 +40,14 @@ integration branch, the per-ticket gate (tests, lint, build, required CI), and t
   `full-send`. When you would ask, stop and report `BLOCKED` with evidence.**
 - If the repo has no `verify-<app>` skill or no GitHub remote, report `BLOCKED`
   before editing.
-- Do not fan out. Stop after 3 fix attempts.
+- Do not fan out. Iterate with the `iterate` skill: there is no attempt cap. Stop only by its stop rules.
+- A budget (quota, rate, time, context) is not a block: write `RUNSTATE.md`, push the WIP commit and report `WAITING`.
 
-Report one of `INTEGRATED <sha>` or `BLOCKED <reason + evidence>`, with gate
-results.
+Report one of `INTEGRATED <sha>`, `READY_FOR_INTEGRATOR`, `WAITING <resume condition>` or
+`BLOCKED(env|task|decision) <reason + evidence>`, with gate results and the progress metric
+(baseline to now).
 
 ## Final report
 
-Table: ticket, status, sha or blocker, fix attempts used. Then the day's
+Table: ticket, status, sha or blocker, progress (baseline to now), iterations run. Then the day's
 integrated merges: `git fetch origin && git log --first-parent --since=1.day origin/<integration branch> --oneline | wc -l`.

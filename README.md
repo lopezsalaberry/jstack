@@ -18,7 +18,9 @@ integration branch, named in each repo's `AGENTS.md`. See [AGENTS.md](AGENTS.md)
 - **Lean review.** Self-validation with real evidence. Cross-model review only
   for high-risk changes, 1 round.
 - **Evidence from the delivered artifact before anything is published.**
-- **Hard caps.** 3 fix attempts per ticket, then block and escalate.
+- **Budgets, not attempt caps.** Iterate from `RUNSTATE.md` until a budget
+  (quota, rate, time) or a plateau after a pivot; see
+  [docs/OPERATING-MODEL.md](docs/OPERATING-MODEL.md).
 - **Measure integrated merges per day.**
 
 ## End-to-end flow
@@ -102,6 +104,11 @@ restore by hand.
    (`@AGENTS.md`) next to it.
 
 Pin a tag. Upstream changes are pulled by hand and reviewed, never auto-synced.
+
+## Operating model
+
+Iteration policy, quota fallback order, typed BLOCKED states and orchestrator
+conventions: [docs/OPERATING-MODEL.md](docs/OPERATING-MODEL.md).
 
 ## Development
 

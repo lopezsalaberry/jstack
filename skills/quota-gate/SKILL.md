@@ -3,7 +3,7 @@ name: quota-gate
 description: "Decide whether to start more work, and with which model, from remaining subscription quota. Use before every launch in fanout and when a model returns a quota or rate-limit error."
 ---
 
-> jstack, operator rule (2026-11-01): concurrency is limited only by subscription quota; when Claude is out, fall back to Codex with a handoff, never wait.
+> New in jstack. Operator rule (2026-11-01): concurrency is limited only by subscription quota; when Claude is out, fall back to Codex with a handoff, never wait.
 
 # Quota gate
 

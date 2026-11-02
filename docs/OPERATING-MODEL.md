@@ -42,6 +42,24 @@ Known gap: some harnesses cannot hand a running thread to another model. In that
 case the fallback starts a new thread from `RUNSTATE.md` instead of continuing in
 place.
 
+## Parallel batches (optional)
+
+A batch runner may run several items at once when they do not touch the same files.
+
+- **File set per item.** Each brief declares `Touches: path, dir/, glob/*.py`, or a
+  read-only dry plan derives it and caches it. No file set means the item is
+  exclusive and runs alone.
+- **Conflict groups.** Overlapping items run one after another; disjoint items run
+  concurrently, each in its own git worktree and branch, with its own log,
+  `RUNSTATE.md` and PR.
+- **Concurrency cap.** Default 3 (`RUNNER_MAX_PARALLEL`; set it to 1 for serial runs).
+- **Rate-limit backoff.** A provider 429 halves the cap and requeues the item; the
+  cap climbs back one step at a time after a cooldown.
+- **Quota before each start.** When the provider is at 0%, start nothing new, let
+  running items finish, and notify the owner.
+- **Idempotent.** Items already marked done are skipped on relaunch; a BLOCKED
+  item is retried.
+
 ## Orchestrator conventions (product-owner layer)
 
 These live in the orchestrator that dispatches jstack workers, documented here

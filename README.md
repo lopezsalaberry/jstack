@@ -46,7 +46,7 @@ ready tickets from the project's tracker (one ticket = queue of one)
 | `fanout` | adapted from pstack `swarm` | Distinct tickets in parallel, one level, quota-limited |
 | `ticket-start` | adapted from rstack `new-feature` | Scope check, then worktree and branch per ticket |
 | `quota-gate` | new | Launch or pause from model quota |
-| `sol-loop` | adapted from tstack | One-round cross-model review, high-risk only |
+| `sol-loop` | adapted from tstack; prove-or-drop brief from pstack `interrogate` | One-round cross-model review, high-risk only; findings must be proven by a run |
 | `full-send` | adapted from tstack | Prove, PR, babysit, integrate, with lean review and `iterate` instead of a fix cap |
 | `file-pr` | adapted from tstack | Open a real PR against the integration branch |
 | `babysit-pr` | tstack | Drive a PR to green with `pr-wait`; counts fix attempts (no cap) |

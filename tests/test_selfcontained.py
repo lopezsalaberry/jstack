@@ -15,7 +15,8 @@ _loader.exec_module(settings)
 
 # Tool names that belong to one harness. They may appear only in the jstack skill's action table.
 HARNESS_TOOLS = ("delegate_task", "watch_pull_request", "unwatch_pull_request", "AskUserQuestion",
-                 "request_user_input", "spawn_agent", "t3_background_wait", "ScheduleWakeup")
+                 "request_user_input", "spawn_agent", "t3_background_wait", "ScheduleWakeup",
+                 "orchestrator_capabilities")
 FIXED_MODEL = re.compile(r"\b(gpt-\d[\w.\-]*|claude-(opus|sonnet|haiku|fable)[\w.\-]*|gemini-\d[\w.\-]*)")
 NOT_SETTINGS = {"started_at", "pr_wait", "wave_status"}  # snake_case words that are not setting keys
 

@@ -81,6 +81,40 @@ def test_quota_probe_rejects_a_malformed_line(tmp_path):
     assert bad.returncode == 2 and "expected" in bad.stderr
 
 
+def test_a_refusal_marks_the_provider_and_every_later_worker_skips_it(tmp_path):
+    marks = {"JSTACK_QUOTA_MARKS": str(tmp_path / "marks.txt")}
+    src = tmp_path / "q.txt"
+    src.write_text("alpha acct1 80\nbeta acct1 50\n")
+    probe = lambda p: run([PROBE, "--source", src, "--provider", p], cwd=tmp_path, env=marks).returncode
+    assert probe("alpha") == 0
+    run([PROBE, "--mark-exhausted", "alpha", "--reason", "quota exceeded"], cwd=tmp_path, env=marks)
+    assert probe("alpha") == 1                      # the source says 80%, the refusal wins
+    assert probe("beta") == 0                       # other providers are untouched
+    other_repo = tmp_path / "elsewhere"
+    other_repo.mkdir()
+    assert run([PROBE, "--source", src, "--provider", "alpha"], cwd=other_repo, env=marks).returncode == 1  # per machine
+    assert "quota exceeded" in run([PROBE, "--source", src, "--provider", "alpha"], cwd=tmp_path, env=marks).stderr
+    run([PROBE, "--clear", "alpha"], cwd=tmp_path, env=marks)
+    assert probe("alpha") == 0
+
+
+def test_a_mark_works_without_any_quota_source_and_expires(tmp_path):
+    marks = {"JSTACK_QUOTA_MARKS": str(tmp_path / "marks.txt")}
+    run([PROBE, "--mark-exhausted", "gamma", "--minutes", "60"], cwd=tmp_path, env=marks)
+    assert run([PROBE, "--provider", "gamma"], cwd=tmp_path, env=marks).returncode == 1   # no source at all
+    (tmp_path / "marks.txt").write_text(f"gamma {int(time.time()) - 5} expired\n")
+    assert run([PROBE, "--provider", "gamma"], cwd=tmp_path, env=marks).returncode == 2   # back to unknown
+
+
+def test_reviewer_models_defaults_to_auto_and_the_preference_syntax_parses(tmp_path):
+    r = repo(tmp_path, "# P\n\n## jstack settings\nreviewer_models: provider-a:model-x, auto\n")
+    assert run([SETTINGS, "--repo", r, "reviewer_models"], cwd=tmp_path).stdout.strip() == "provider-a:model-x, auto"
+    other = tmp_path / "second"
+    other.mkdir()
+    plain = repo(other)
+    assert run([SETTINGS, "--repo", plain, "reviewer_models"], cwd=tmp_path).stdout.strip() == "auto"
+
+
 # --- doctor -----------------------------------------------------------------
 
 def tools_dir(tmp_path, with_gh):

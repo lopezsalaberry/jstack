@@ -2,6 +2,24 @@
 
 Format follows Keep a Changelog. Versions are tagged `vX.Y.Z`; install a tag, not `main`.
 
+## 0.6.1
+
+### Added
+- A review never gets stuck on one model. `cross-review` walks `reviewer_models` in order, where
+  `auto` means any model the harness can start (other families first), and goes to the next
+  candidate the moment one refuses. The PR ledger records the independence level reached (L1 other
+  family, L2 same family other model, L3 fresh session) and what was skipped.
+- `quota-probe --mark-exhausted NAME` and `--clear NAME`: a refusal for quota, rate limit,
+  authentication or availability is remembered per machine for 60 minutes, so no other worker
+  retries that provider. It works with no quota source at all.
+- A "List the models and providers you can start" action in the `jstack` skill.
+- README: stability policy and CI badge.
+
+### Changed
+- `reviewer_models` defaults to `auto` instead of empty.
+- `docs/OPERATING-MODEL.md` is now a map that points to the skills and repeats no rule, so it cannot
+  contradict them. `iterate` says its "two reviewers" rule is about PR reviewers, not `cross-review`.
+
 ## 0.6.0
 
 Self-contained release. Everything a skill needs now ships in this repo.

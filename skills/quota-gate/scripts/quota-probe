@@ -2,6 +2,8 @@
 """quota-probe: report how much quota each provider account has left, from a plain file.
 
   quota-probe [--source FILE] [--max-age MINUTES] [--provider NAME]
+  quota-probe --mark-exhausted NAME [--minutes N] [--reason TEXT]
+  quota-probe --clear NAME
 
 The source file has one line per account: `<provider> <account> <percent remaining>`.
 Blank lines and lines starting with `#` are ignored. Whatever keeps that file fresh
@@ -13,6 +15,12 @@ With --provider NAME, exit
   1  NAME is listed and every account is at 0%
   2  unknown: no source, a source older than --max-age, or NAME not listed.
      Unknown is not exhaustion; the caller goes ahead and notes it.
+
+Marks: when starting a model fails for quota, rate limit, authentication or unavailability, run
+--mark-exhausted NAME. For the next N minutes (default 60) --provider NAME exits 1 whatever the
+source says, so no other worker retries a provider that just refused. --clear NAME removes the
+mark. Marks live in $JSTACK_QUOTA_MARKS or ~/.config/jstack/quota-marks.txt (per machine, not
+per repo: quota belongs to the account), one line `<provider> <expires epoch> <reason>`.
 
 Default source: $JSTACK_QUOTA_SOURCE, then ./.jstack/quota.txt, then ~/.config/jstack/quota.txt.
 Default max age: $JSTACK_QUOTA_MAX_AGE_MINUTES or 30.
@@ -50,13 +58,57 @@ def parse(path: Path) -> list[tuple[str, str, float]]:
     return rows
 
 
+def marks_file() -> Path:
+    return Path(os.environ.get("JSTACK_QUOTA_MARKS") or Path.home() / ".config" / "jstack" / "quota-marks.txt")
+
+
+def live_marks(now: float) -> dict[str, tuple[float, str]]:
+    path, found = marks_file(), {}
+    if not path.is_file():
+        return found
+    for line in path.read_text().splitlines():
+        parts = line.split(maxsplit=2)
+        if len(parts) >= 2:
+            try:
+                expires = float(parts[1])
+            except ValueError:
+                continue
+            if expires > now:
+                found[parts[0]] = (max(expires, found.get(parts[0], (0, ""))[0]), parts[2] if len(parts) > 2 else "")
+    return found
+
+
+def write_marks(marks: dict[str, tuple[float, str]]) -> None:
+    path = marks_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(f"{p} {e:.0f} {r}\n" for p, (e, r) in sorted(marks.items())))
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--source")
     ap.add_argument("--provider")
+    ap.add_argument("--mark-exhausted", metavar="NAME")
+    ap.add_argument("--clear", metavar="NAME")
+    ap.add_argument("--minutes", type=float, default=60)
+    ap.add_argument("--reason", default="start failed")
     ap.add_argument("--max-age", type=float,
                     default=float(os.environ.get("JSTACK_QUOTA_MAX_AGE_MINUTES", "30")))
     args = ap.parse_args()
+    now = time.time()
+    if args.mark_exhausted or args.clear:
+        marks = live_marks(now)
+        if args.mark_exhausted:
+            marks[args.mark_exhausted] = (now + args.minutes * 60, args.reason.replace("\n", " "))
+            print(f"quota-probe: {args.mark_exhausted} marked exhausted for {args.minutes:g} min")
+        else:
+            marks.pop(args.clear, None)
+            print(f"quota-probe: {args.clear} mark cleared")
+        write_marks(marks)
+        return
+    if args.provider and args.provider in live_marks(now):
+        print(f"quota-probe: {args.provider} is marked exhausted ({live_marks(now)[args.provider][1]})", file=sys.stderr)
+        sys.exit(1)
     source = find_source(args.source)
     if source is None:
         print("quota-probe: unknown (no quota source configured)", file=sys.stderr)

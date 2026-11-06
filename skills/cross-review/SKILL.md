@@ -33,25 +33,35 @@ fails its own checks.
 
 ## 2. Pick the reviewer
 
-Settings (see `jstack`): `reviewer_models`, `quota_probe`.
+Settings (see `jstack`): `reviewer_models`, `quota_probe`. The reviewer must never be the
+reason a change is stuck: there is always a next candidate, and a refusal sends you to it.
 
-1. Walk `reviewer_models` in order and take the first entry whose provider is not
-   the author's provider and that `quota-gate` reports as available (exit 0 or 2).
-2. None available, or `reviewer_models` empty: do not block and do not wait. Start an
-   independent review in a **fresh session of any model that is not the author's
-   session**, preferably a different family. It sees only `git diff <base>` and the
-   ticket's acceptance criteria, nothing of the author's reasoning. Start it with the
-   harness's way to delegate a task (see `jstack`).
-3. Whichever reviewer ran is held to the brief below exactly. Deterministic gates
-   (tests, lint, build, `verify-<app>`) must be green before and after. Red gate, no merge.
-4. After a merge reviewed by the fallback, run the repo gate on the merged head and keep
-   that output in the evidence. Do not queue a second read-review. One exception: the
-   change is high-risk and the reviewer left UNPROVEN findings. Then append one line
-   to the file in the `posthoc_queue` setting
-   (`<ISO date> <repo> <PR or sha> <base sha> <ticket> pending`, one per ticket), or,
-   if the setting is empty, list the UNPROVEN items in the PR description.
+1. **Candidates, in order.** The entries of `reviewer_models`. An entry `auto` stands for every
+   model the harness can start (list them with the "List the models" action in `jstack`), models
+   from a family other than the author's first. Drop any candidate that is the author's own
+   session.
+2. **Skip what is known to be out.** Ask `quota-gate` about each candidate's provider. Exit 1 (at
+   0% or marked exhausted): skip it. Exit 0 or 2: it is a candidate.
+3. **Try it.** Start the reviewer with the harness's delegate action. If it fails for quota, rate
+   limit, authentication or availability, mark the provider exhausted as `quota-gate` describes
+   and go to the next candidate immediately. Do not retry the same provider and do not wait.
+4. **Independence ladder.** Take the best level any candidate gives, and write it in the ledger:
+   - **L1** a model from another family than the author's.
+   - **L2** a different model from the same family.
+   - **L3** a fresh session of any model that is not the author's session, seeing only
+     `git diff <base>` and the acceptance criteria. This level is always available if any model
+     can start at all.
+   When the harness does not say which family a model belongs to (an automatic router, for
+   example), record "family unknown" instead of claiming L1.
+5. Whichever reviewer ran is held to the brief below exactly. Deterministic gates (tests, lint,
+   build, `verify-<app>`) must be green before and after. Red gate, no merge.
+6. After a merge reviewed at L2 or L3, run the repo gate on the merged head and keep that output
+   in the evidence. Do not queue a second read-review. One exception: the change is high-risk
+   and the reviewer left UNPROVEN findings. Then append one line to the file in the
+   `posthoc_queue` setting (`<ISO date> <repo> <PR or sha> <base sha> <ticket> pending`, one per
+   ticket), or, if the setting is empty, list the UNPROVEN items in the PR description.
 
-If no reviewer can run at all, pause per `quota-gate`.
+If every candidate refuses, including L3, no model can start: pause per `quota-gate`.
 
 ## 3. Brief
 
@@ -82,6 +92,7 @@ Ship when no verified finding is open. If one stays disputed, show both sides in
 lines and escalate. Put this block in the PR description so the review is auditable:
 
 ```
-Cross-review: reviewer <model> (author <model>) | verdict <APPROVE|CHANGES>
+Cross-review: reviewer <model> (author <model>) | independence <L1|L2|L3|family unknown> | verdict <APPROVE|CHANGES>
+Skipped before this one: <provider: reason, or none>
 Verified and fixed: <n> | Dropped (did not reproduce): <n> | UNPROVEN: <n> | Diff before/after: <lines>
 ```

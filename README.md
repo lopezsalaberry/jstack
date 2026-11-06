@@ -1,5 +1,7 @@
 # jstack
 
+[![ci](https://github.com/lopezsalaberry/jstack/actions/workflows/ci.yml/badge.svg)](https://github.com/lopezsalaberry/jstack/actions/workflows/ci.yml)
+
 A self-contained skill stack for shipping many independent tickets in parallel with coding
 agents, without review loops. Plain `skills/<name>/SKILL.md` folders plus a few small tools,
 usable from any harness that loads skill folders. Everything a skill needs ships inside this
@@ -11,7 +13,7 @@ repo; the only outside requirements are `git`, `gh` and `python3`.
 2. **Install.**
    ```sh
    git clone https://github.com/lopezsalaberry/jstack.git ~/jstack
-   cd ~/jstack && git checkout v0.6.0      # pin a tag; upstream is never auto-synced
+   cd ~/jstack && git checkout v0.6.1      # pin a tag; upstream is never auto-synced
    ./install.sh --dry-run                  # see what it would link
    ./install.sh
    ```
@@ -72,6 +74,15 @@ merges per day.
 One `## jstack settings` block in the repo's `AGENTS.md`, or `JSTACK_<KEY>` environment
 variables. Keys, defaults and precedence: the `jstack` skill. Read the resolved values with
 `skills/jstack/scripts/jstack-settings`.
+
+## Stability
+
+Versions are tagged `vX.Y.Z` and every one has a section in [CHANGELOG.md](CHANGELOG.md).
+The public surface is: skill names, setting keys and their defaults, the command-line options of
+the shipped scripts, the status words, and the `RUNSTATE.md` header lines. While the major version
+is 0, a change to any of them is a minor-version bump and is listed under "Changed" or "Removed".
+`install.sh` deletes the link of a renamed or removed skill, so an upgrade does not leave dead
+entries. CI runs the tests and the linter on Linux and macOS (Python 3.12).
 
 ## When something goes wrong
 

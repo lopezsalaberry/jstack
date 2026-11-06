@@ -53,7 +53,7 @@ Quota, rate limits, time and context are budgets. When one is nearly used up, wi
 - You **cannot prove** the change.
 - The goal is **ambiguous** in a way that changes the result.
 - **Another PR makes this one obsolete.**
-- Two reviewers still disagree after two rounds: show both positions.
+- Two PR reviewers (people or bots) still disagree after two exchanges on the PR: show both positions. This is not `cross-review`, which is one round by design.
 
 Then report a typed `BLOCKED(env)`, `BLOCKED(task)` or `BLOCKED(decision)` with the failing check, the premises you tested, the evidence, and what is needed. `BLOCKED(decision)` is the question you would have asked, with the options and your recommendation first. The queue moves on to the next ticket.
 

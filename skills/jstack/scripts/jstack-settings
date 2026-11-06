@@ -20,7 +20,7 @@ SKILLS = Path(__file__).resolve().parents[2]
 DEFAULTS = {
     "integration_branch": None,  # derived from the remote
     "models": "",
-    "reviewer_models": "",
+    "reviewer_models": "auto",
     "quota_probe": str(SKILLS / "quota-gate" / "scripts" / "quota-probe"),
     "quota_source": ".jstack/quota.txt",
     "quota_max_age_minutes": "30",

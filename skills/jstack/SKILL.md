@@ -21,7 +21,7 @@ Precedence: environment `JSTACK_<KEY>` over `AGENTS.md` over the default.
 |---|---|---|
 | `integration_branch` | the remote's default branch | Where green tickets merge |
 | `models` | empty | Ordered `provider:model` list for workers. Empty: use the model the harness already runs, no switching |
-| `reviewer_models` | empty | Ordered `provider:model` list for `cross-review`. The reviewer's provider must differ from the author's |
+| `reviewer_models` | `auto` | Ordered preference for `cross-review`: entries are `provider:model` or `auto` (any model the harness can start, other families first). Example: `provider-a:model-x, auto` means prefer that model, otherwise whatever is available |
 | `quota_probe` | the probe shipped with `quota-gate` | Command that answers whether a provider has quota. Contract in `quota-gate` |
 | `quota_source` | `.jstack/quota.txt` | File the shipped probe reads |
 | `quota_max_age_minutes` | `30` | Older data counts as unknown |
@@ -43,6 +43,7 @@ needs only `git`, `gh` and `python3`.
 | Watch a PR until something changes | `pr-wait` under the `Monitor` tool | `watch_pull_request` | `pr-wait` as one long command | `babysit-pr/scripts/pr-wait` as one long command |
 | Ask the user | `AskUserQuestion` | the question tool | `request_user_input` | Stop with `BLOCKED(decision)` and put the question first in the final message |
 | Wait for a background command | `Monitor` | `t3_background_wait` | wait in the foreground | Run it in the foreground with a timeout |
+| List the models and providers you can start | the `/model` menu | `orchestrator_capabilities` | the model picker | Try the entries of the list in order: a refusal for quota, authentication or availability is the answer |
 
 Never use two watchers on one PR. A delegated child never watches a PR its parent owns.
 

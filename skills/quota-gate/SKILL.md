@@ -18,6 +18,12 @@ listed). The shipped `scripts/quota-probe` reads a plain file of
 **Unknown is not exhausted.** On exit 2, go ahead and write "quota unknown for
 `<provider>`" in the report. Do not invent scarcity from missing data.
 
+**A refusal is the best data there is.** When starting a model fails for quota, rate limit,
+authentication or availability, run `<quota_probe> --mark-exhausted <provider>` (for 60 minutes
+by default; `--minutes N` changes it) and move to the next candidate at once. The mark makes the
+probe answer 1 for that provider on this machine, so no other worker retries it. When a provider
+answers again, `--clear <provider>` removes the mark.
+
 ## Pick the model
 
 1. `models` empty: use the model the harness already runs, and do not switch. If a

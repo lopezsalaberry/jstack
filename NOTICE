@@ -1,11 +1,11 @@
-jstack includes material from these projects. Each copied or adapted skill
-names its source and commit at the top of its SKILL.md.
+jstack includes material from these projects. This file is the record of what came from
+where, with the exact commit; the skills themselves do not repeat it.
 
 t3dotgg/tstack @ 1085050f3baed1ac724caa4a8166145fb2ac88af
-  Skills: babysit-pr, file-pr, full-send, leaving-pr-comments, sol-loop (adapted;
-  scripts/pr-wait unchanged). iterate draws on full-send ("ask only when you
-  cannot continue alone", smallest change) and babysit-pr (keep the PR at the
-  size the goal needs).
+  Skills: babysit-pr, file-pr, full-send, leaving-pr-comments, cross-review (adapted from its
+  sol-loop; renamed). scripts/pr-wait is adapted: review bots are configurable instead of fixed.
+  iterate draws on full-send ("ask only when you cannot continue alone", smallest change) and
+  babysit-pr (keep the PR at the size the goal needs).
 
 backnotprop/pstack @ 25abb38559ddbabec563646224d09eff9a250eca
   Mirror of cursor/plugins (pstack by Poteto). https://github.com/cursor/plugins

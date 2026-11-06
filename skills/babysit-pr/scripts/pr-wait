@@ -2,17 +2,19 @@
 """pr-wait: watch one GitHub pull request and print one line per real event.
 
   pr-wait <pr> [--repo owner/name] [--until green|ready|any-change] [--interval 20]
+          [--bots a,b] [--advisory-bots c]
 
 <pr> is a PR number or PR URL. Without --repo, the repo comes from the URL or
 from the current checkout. Stdout carries only events, one line each, so a
-monitor (Claude Code's Monitor tool) wakes the agent once per real event.
+monitor wakes the agent once per real event.
 Progress and errors that do not end the run go to stderr.
 
 --until
   green       required checks passed on the current head (every CI check when
               the base branch requires none)
-  ready      green, Greptile or Macroscope reviewed the current head, and no
-              review thread is unresolved (default)
+  ready      green, every --bots reviewer reviewed the current head, and no
+              review thread is unresolved (default). With no --bots it needs only
+              green and no unresolved thread: it never waits for a bot that is not there
   any-change  stop after the first poll that prints an event
 
 Exit codes
@@ -27,13 +29,15 @@ Events
   - all checks finished on the head (one summary line)
   - a new comment, review, thread, or thread reply from someone other than the
     PR author or the gh user
-  - Greptile, Macroscope, or CodeRabbit finished on the head, or a Greptile or
-    Macroscope summary changed after that
+  - a configured review bot finished on the head, or a gating bot's summary
+    changed after that
   - the base branch moved and the new commits touch files in this PR
   - merge state became BEHIND or DIRTY
   - the PR merged or closed
 
-CodeRabbit is advisory: pr-wait reports it but never waits for it. Comment
+Bots: --bots (default $JSTACK_REVIEW_BOTS) gate `ready`; --advisory-bots (default
+$JSTACK_ADVISORY_BOTS) are reported but never waited for. Both are comma lists of
+bot logins or check names, matched case-insensitively as substrings. Comment
 edits are never events, and top-level comments from CI and deploy bots
 (github-actions, Vercel) are skipped, because checks already carry that news.
 
@@ -59,8 +63,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, NoReturn
 
-GATING_BOTS = ("greptile", "macroscope")
-ADVISORY_BOTS = ("coderabbit",)
+GATING_BOTS: tuple[str, ...] = ()
+ADVISORY_BOTS: tuple[str, ...] = ()
 # CI and deploy bots report through checks. Their PR comments are status reports.
 STATUS_BOTS = ("github-actions", "vercel", "netlify", "railway", "cloudflare")
 STATE_DIR = Path.home() / ".local" / "state" / "pr-wait"
@@ -164,7 +168,7 @@ def snippet(body: str, limit: int = 100) -> str:
 
 
 def verdict(body: str) -> str:
-    """The verdict line of a bot summary (Macroscope, Greptile), if it has one."""
+    """The verdict line of a review-bot summary, if it has one."""
     for line in plain(body).splitlines():
         if re.search(r"verdict|confidence score", line, re.IGNORECASE):
             return snippet(line.replace("*", ""), 80)
@@ -486,7 +490,7 @@ class Watcher:
             if self.required
             else "",
             ", ".join(bot_status[b] for b in GATING_BOTS + ADVISORY_BOTS if b in bot_status)
-            or "no Greptile or Macroscope yet",
+            or ("no gating bot has reviewed yet" if GATING_BOTS else "no review bots configured"),
             f"{len(unresolved)} unresolved threads",
             f"merge state {merge_state}",
         ]
@@ -503,8 +507,8 @@ class Watcher:
             if green and self.until == "green":
                 self.reported.add(checks_key)
                 self.finish(0, [f"green on {short}: {summary}{self.behind(base, base_oid, head)}"])
-            # ready waits for Greptile or Macroscope, never for CodeRabbit.
-            if green and reviewed:
+            # ready waits for the gating bots, never for advisory ones.
+            if green and (reviewed or not GATING_BOTS):
                 if unresolved:
                     self.finish(1, [f"blocked by {len(unresolved)} unresolved threads on {short}: {' '.join(unresolved)}"])
                 if merge_state == "BEHIND":
@@ -543,7 +547,14 @@ def main() -> None:
     parser.add_argument("--repo", help="owner/name (default: from the URL or the current checkout)")
     parser.add_argument("--until", choices=("green", "ready", "any-change"), default="ready")
     parser.add_argument("--interval", type=int, default=20, help="seconds between polls (default 20, min 5)")
+    parser.add_argument("--bots", default=os.environ.get("JSTACK_REVIEW_BOTS", ""),
+                        help="comma list of review bots that gate `ready`")
+    parser.add_argument("--advisory-bots", default=os.environ.get("JSTACK_ADVISORY_BOTS", ""),
+                        help="comma list of review bots reported but never waited for")
     args = parser.parse_args()
+    global GATING_BOTS, ADVISORY_BOTS
+    split = lambda text: tuple(b.strip().lower() for b in text.split(",") if b.strip())
+    GATING_BOTS, ADVISORY_BOTS = split(args.bots), split(args.advisory_bots)
     repo, pr = parse_target(args.pr, args.repo)
     _lock = lock(repo, pr)
     Watcher(repo, pr, args.until, max(args.interval, 5)).run()

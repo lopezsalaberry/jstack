@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+"""jstack-settings: print the resolved jstack settings for a repo.
+
+  jstack-settings [--repo PATH] [--json] [KEY]
+
+Precedence: environment JSTACK_<KEY>, then the `## jstack settings` block of the repo's
+AGENTS.md (`key: value` lines), then the default. Without KEY prints every setting.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+SKILLS = Path(__file__).resolve().parents[2]
+DEFAULTS = {
+    "integration_branch": None,  # derived from the remote
+    "models": "",
+    "reviewer_models": "",
+    "quota_probe": str(SKILLS / "quota-gate" / "scripts" / "quota-probe"),
+    "quota_source": ".jstack/quota.txt",
+    "quota_max_age_minutes": "30",
+    "iteration_minutes": "60",
+    "max_parallel": "",
+    "review_bots": "",
+    "advisory_bots": "",
+    "posthoc_queue": "",
+    "paid_fallback": "off",
+}
+
+
+def block(agents: Path) -> dict[str, str]:
+    if not agents.is_file():
+        return {}
+    values: dict[str, str] = {}
+    inside = False
+    for line in agents.read_text().splitlines():
+        if re.match(r"^#{1,6}\s", line):
+            inside = bool(re.match(r"^#{1,6}\s*jstack settings\s*$", line, re.I))
+            continue
+        match = inside and re.match(r"^([a-z_]+):\s*(.*?)\s*$", line)
+        if match:
+            values[match.group(1)] = re.sub(r"\s{2,}#.*$", "", match.group(2)).strip()
+    return values
+
+
+def default_branch(repo: Path) -> str:
+    proc = subprocess.run(["git", "-C", str(repo), "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+                          capture_output=True, text=True)
+    return proc.stdout.strip().removeprefix("origin/") if proc.returncode == 0 and proc.stdout.strip() else "main"
+
+
+def resolve(repo: Path, env: dict[str, str] | None = None) -> dict[str, str]:
+    env = os.environ if env is None else env
+    configured = block(repo / "AGENTS.md")
+    out: dict[str, str] = {}
+    for key, default in DEFAULTS.items():
+        if f"JSTACK_{key.upper()}" in env:
+            out[key] = env[f"JSTACK_{key.upper()}"]
+        elif key in configured:
+            out[key] = configured[key]
+        else:
+            out[key] = default if default is not None else default_branch(repo)
+    return out
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("key", nargs="?")
+    ap.add_argument("--repo", type=Path, default=Path.cwd())
+    ap.add_argument("--json", action="store_true")
+    args = ap.parse_args()
+    values = resolve(args.repo)
+    if args.key:
+        if args.key not in values:
+            print(f"jstack-settings: unknown key {args.key!r}; known: {', '.join(values)}", file=sys.stderr)
+            sys.exit(2)
+        print(values[args.key])
+    elif args.json:
+        print(json.dumps(values, indent=2))
+    else:
+        for key, value in values.items():
+            print(f"{key}: {value}")
+
+
+if __name__ == "__main__":
+    main()

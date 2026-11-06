@@ -3,8 +3,6 @@ name: prove-it
 description: "Apply after completing a task, before declaring done. Verify against the real artifact (run the feature, read the actual value, inspect the diff), not a proxy, self-report, or 'it compiles.'"
 ---
 
-> Source: [backnotprop/pstack](https://github.com/backnotprop/pstack) @ `25abb38559ddbabec563646224d09eff9a250eca` (adapted from principle-prove-it-works: delivered-artifact line, show-me-your-work reference removed).
-
 # Prove It Works
 
 Verify every task output by checking the real thing directly. Do not infer from proxies, self-reports, or "it compiles."

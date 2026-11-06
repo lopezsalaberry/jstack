@@ -3,8 +3,6 @@ name: leaving-pr-comments
 description: Use whenever leaving comments on GitHub.
 ---
 
-> Source: [t3dotgg/tstack](https://github.com/t3dotgg/tstack) @ `1085050f3baed1ac724caa4a8166145fb2ac88af` (copied, dependency of file-pr and babysit-pr).
-
 # Leaving PR Comments
 
 Prefix every agent-authored comment left on the user's behalf with this GitHub

@@ -3,8 +3,6 @@ name: full-send
 description: Complete a ticket end to end autonomously: prove, PR, babysit, merge.
 ---
 
-> Source: [t3dotgg/tstack](https://github.com/t3dotgg/tstack) @ `1085050f3baed1ac724caa4a8166145fb2ac88af` (adapted: lean review, per-ticket gate, `iterate` instead of a fix-attempt cap).
-
 # Full Send
 
 If the user triggered this, it's because they are not watching this thread, and
@@ -50,8 +48,8 @@ one appears.
 2. **Prove it.** Get proof for every change you made. See "Proof".
    Open the app through the repo's `verify-<app>`, test what the ticket asks,
    and leave a pass/fail checklist (`evidence`).
-3. **Get feedback.** Use `sol-loop` (1 round) only when the change touches a
-   high-risk area listed in `sol-loop`. Otherwise skip cross-model review.
+3. **Get feedback.** Use `cross-review` (1 round) only when the change touches a
+   high-risk area listed in `cross-review`. Otherwise skip cross-model review.
 4. **File the PR** with the `file-pr` skill against the integration branch.
    Rebase onto the latest integration branch first. Paste the `evidence` checklist
    summary into the description, FAIL lines included.
@@ -67,9 +65,15 @@ one appears.
 
 Stay active from step 1 to step 7. If you end your turn while checks or bots are
 pending, the work stops, because nobody will prompt you again. Wait with the
-watcher from `babysit-pr`, so something wakes you when the PR changes. In T3
-Code that is `watch_pull_request`. If you stop before the merge, call
-`unwatch_pull_request` first.
+watcher from `babysit-pr`, so something wakes you when the PR changes. If you stop
+before the merge, stop the watcher first.
+
+## Stop before merge
+
+If the operator asks to stop when the PR is ready, or the repo's contract names a single
+integrator who merges, do steps 1 to 5 and skip step 6. The permission to merge above does
+not apply. Leave the PR open and green, stop the watcher, and report `READY_FOR_INTEGRATOR`
+with the PR link, the head SHA and the proof.
 
 ## Proof
 
@@ -108,8 +112,9 @@ Full confidence means all of these are true on the latest commit:
 Merge with the method the repo uses. Check the allowed methods and recent merged
 PRs. If the repo uses a merge queue or auto-merge, stay until GitHub reports the
 PR as merged. Merge through branch protection as configured. Never use `--admin`
-or other bypasses. You can ignore automated reviews that request "needs human
-review" if you have high confidence in your changes.
+or other bypasses. An automated review that only says "needs human review" and names
+no concrete finding may be set aside when your proof covers the whole diff; say so in
+the report. A review that names a finding is answered, never set aside.
 
 ## Asking the user
 
@@ -118,8 +123,7 @@ Under `fanout`, the worker brief overrides this section: never ask, report
 
 A question in a normal message goes unseen, and the thread looks done. To ask
 the user something, use the harness's question tool so the thread shows that
-it is waiting: `AskUserQuestion` in Claude Code, `request_user_input` in Codex,
-or the question tool your harness has. Put all the context in the question:
+it is waiting (see `jstack` for the tool in your harness). Put all the context in the question:
 the PR link, what blocks you, and the options with your recommendation first.
 
 Ask only when you cannot continue alone:

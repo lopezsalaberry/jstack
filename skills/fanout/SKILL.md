@@ -3,26 +3,29 @@ name: fanout
 description: "Run many independent tickets in parallel, one worker per distinct ticket, one level deep, limited only by model quota. Use for 'fan out', 'run these tickets in parallel', or a queue of independent work."
 ---
 
-> Adapted from [backnotprop/pstack](https://github.com/backnotprop/pstack) `swarm` @ `25abb38559ddbabec563646224d09eff9a250eca` (upstream: cursor/plugins pstack). Races, best-of, and duplicate candidates removed.
-
 # Fanout
 
 ## Rules
 
 - One worker per distinct ticket. Never give two workers the same ticket.
 - One level only. A worker never fans out and
-  never starts reviewers other than `sol-loop` for high-risk work.
-- No fixed worker count. `quota-gate` decides when to launch.
+  never starts reviewers other than `cross-review` for high-risk work.
+- No fixed worker count. `quota-gate` decides when to launch. The optional
+  `max_parallel` setting (see `jstack`) adds a cap; empty means quota alone limits.
+- A provider rate-limit error (HTTP 429) halves the number of workers running at once and
+  requeues that ticket. The number climbs back one at a time after a quiet period.
 
 ## Loop
 
 1. **Queue.** Ready tickets from the project's tracker, with id, goal, and the
-   files each expects to touch. One ticket is a queue of one.
-   Tickets that touch the same files run one after the other, not in parallel.
+   files each expects to touch (`Touches: path, dir/, glob/*.py`). One ticket is a queue
+   of one. Tickets whose file sets overlap run one after the other; disjoint ones run
+   together, each in its own worktree and branch. A ticket with no declared file set is
+   exclusive and runs alone.
 2. **Gate.** Apply `quota-gate` before each launch.
-3. **Launch** one background worker per ticket with the model `quota-gate` picks (Sonnet;
-   Opus only for design, design tools, or when the operator asks; `gpt-6.1-sol` with handoff when Claude is at 0%), using the harness's subagent or thread tool.
-   Each worker runs `ticket-start` once, then `full-send`.
+3. **Launch** one background worker per ticket with the model `quota-gate` picks,
+   using the harness's way to delegate a task (see `jstack`). Each worker runs
+   `ticket-start` once, then `full-send`.
 4. **Drain.** As workers report, launch the next ticket. Escalate `BLOCKED`
    tickets to the operator in one consolidated message. `WAITING <condition>` is
    parked, not done: when the condition holds (the `quota-gate` probe passes, a
@@ -53,6 +56,13 @@ integration branch, the per-ticket gate (tests, lint, build, required CI), and t
 Report one of `INTEGRATED <sha>`, `READY_FOR_INTEGRATOR`, `WAITING <resume condition>` or
 `BLOCKED(env|task|decision) <reason + evidence>` (the status vocabulary of `iterate`), with gate results and the progress metric
 (baseline to now).
+
+## Watching a wave
+
+`scripts/wave-status` lists every worktree of the repo that has a `RUNSTATE.md` with its
+status, metric (baseline to now), next step and how long ago it was written. A worker
+whose `RUNSTATE.md` has not moved for longer than `iteration_minutes` and whose branch has
+no new commit is treated as dead, per step 4.
 
 ## Final report
 

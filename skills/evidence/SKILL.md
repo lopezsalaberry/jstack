@@ -3,8 +3,6 @@ name: evidence
 description: "Record local proof that a ticket's behavior works: a checklist of test targets with pass/fail, numbered screenshots, and an optional screen recording, saved under .artifacts/ and summarized in the PR. Use while proving any change with observable behavior."
 ---
 
-> Adapted from [michaelshimeles/rstack](https://github.com/michaelshimeles/rstack) `evidence-driven-testing` @ `11b15767d7587bab11f6c4957507b5f26d1785c7`: protocol only, local evidence, no upload tooling, no copied scripts.
-
 # Evidence
 
 Test the change the way a user would and keep what you saw. How to launch and

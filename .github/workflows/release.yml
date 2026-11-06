@@ -1,0 +1,23 @@
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the tag matches VERSION and the changelog
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          [ "$(cat VERSION)" = "$v" ] || { echo "VERSION is $(cat VERSION), tag is $v"; exit 1; }
+          grep -q "^## $v\$" CHANGELOG.md || { echo "CHANGELOG.md has no '## $v' section"; exit 1; }
+      - name: Create the release from the changelog section
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          awk -v h="## $v" '$0==h{f=1;next} /^## /{f=0} f' CHANGELOG.md > notes.md
+          gh release create "$GITHUB_REF_NAME" --title "jstack $v" --notes-file notes.md

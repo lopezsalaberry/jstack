@@ -4,8 +4,6 @@ description: "Find the mistakes agents keep repeating in this repo and make each
 disable-model-invocation: true
 ---
 
-> Source: [backnotprop/pstack](https://github.com/backnotprop/pstack) @ `25abb38559ddbabec563646224d09eff9a250eca` (copied).
-
 # Correct
 
 The operator keeps correcting agents in this repo for the same mistakes. Change the repo so the next agent can't make them.

@@ -3,8 +3,6 @@ name: ticket-start
 description: "Start a ticket in its own git worktree and branch from the project's integration branch, after checking open PRs and other worktrees for overlap. Use before any edit for a ticket. Read-only work does not need it."
 ---
 
-> Adapted from [michaelshimeles/rstack](https://github.com/michaelshimeles/rstack) `new-feature` @ `11b15767d7587bab11f6c4957507b5f26d1785c7`: integration branch per project, other worktrees included in the scope check.
-
 # Ticket start
 
 Each ticket gets its own worktree and branch. Never edit the integration

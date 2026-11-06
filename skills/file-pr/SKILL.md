@@ -3,8 +3,6 @@ name: file-pr
 description: File a concise pull request. Use when the user asks to file, open, or create a PR.
 ---
 
-> Source: [t3dotgg/tstack](https://github.com/t3dotgg/tstack) @ `1085050f3baed1ac724caa4a8166145fb2ac88af` (adapted: integration branch).
-
 # File PR
 
 Before filing, check whether a PR for this branch already exists. Review the

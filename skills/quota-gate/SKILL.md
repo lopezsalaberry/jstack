@@ -3,24 +3,40 @@ name: quota-gate
 description: "Decide whether to start more work, and with which model, from remaining subscription quota. Use before every launch in fanout and when a model returns a quota or rate-limit error."
 ---
 
-> New in jstack. Operator rule (2026-11-01): concurrency is limited only by subscription quota; when Claude is out, fall back to Codex with a handoff, never wait.
-
 # Quota gate
 
-Before starting a worker, run `$JSTACK_QUOTA_PROBE`. It prints one line per
-Hub subscription account: `<provider> <account> <percent remaining>`.
-`$JSTACK_QUOTA_PROBE --model <id>` exits 0 when that model's provider has quota, 1 when not.
+Quota is the only thing that limits how many workers run. Settings used (see `jstack`):
+`models`, `quota_probe`, `paid_fallback`.
 
-Pick the model in this order:
+## The probe contract
 
-1. Claude above 0% on any account: `claudeAgent` / `claude-sonnet-5-5`
-   (`claude-opus-5-5` only for design, Open Pencil, or when the operator asks).
-2. Claude at 0% and Codex above 0%: `codex` / `gpt-6.1-sol`. Write a
-   `session-handoff` first (ticket, branch, state, next step) and start the
-   Codex worker from it. Do not wait for Claude.
-3. Both at 0%, or a quota error on both: pause. Commit work in progress, stop
-   at a safe point and report `WAITING` (resume: the probe passes for either
-   provider; `iterate` explains the report). This is the only case where jstack waits.
+`<quota_probe> --provider <name>` exits 0 when that provider has quota, 1 when every
+account is at 0%, and 2 when it does not know (no data, stale data, provider not
+listed). The shipped `scripts/quota-probe` reads a plain file of
+`<provider> <account> <percent>` lines; any command with the same contract works.
 
-Never use OpenRouter or the Anthropic credits key for routine waves; only when
-the operator asks explicitly for that task. The probe hides them unless `--include-paid`.
+**Unknown is not exhausted.** On exit 2, go ahead and write "quota unknown for
+`<provider>`" in the report. Do not invent scarcity from missing data.
+
+## Pick the model
+
+1. `models` empty: use the model the harness already runs, and do not switch. If a
+   quota or rate-limit error comes back, go to step 4.
+2. Otherwise walk `models` in order. The first entry whose provider exits 0 or 2 is
+   the one. Starting a worker on a different provider than the current thread means
+   **writing `RUNSTATE.md` first** (ticket, branch, state, next step) and starting the
+   new worker from it with a fresh brief. Never switch silently mid-thread. Some
+   harnesses cannot move a running thread: then the new worker is a new thread that
+   reads `RUNSTATE.md`.
+3. Use the strongest model in the list only for design work or when the operator asks;
+   workers default to the first entry.
+4. Every provider in `models` exits 1, or returns a quota error: commit work in
+   progress, push, and report `WAITING <resume condition>`. The condition is "the
+   probe exits 0 or 2 for any provider in `models`". This is the only case where the
+   stack waits. Never fail a ticket for quota.
+
+## Paid fallback
+
+Pay-per-token routes or API-credit keys are off. They apply only when `paid_fallback`
+names a provider and a daily cap, or when the operator asks for that task. Stop at the
+cap and report `WAITING`.

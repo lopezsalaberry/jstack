@@ -45,8 +45,8 @@ def test_iterate_skill_defines_the_loop_the_brakes_and_the_stop_rules():
     text = (ROOT / "skills/iterate/SKILL.md").read_text()
     for needle in ("never a reason to stop", "VERIFIED", "NOT VERIFIED", "INCONCLUSIVE", "premise",
                    "Budgets are not failures", "WAITING", "BLOCKED(env)", "BLOCKED(task)", "BLOCKED(decision)",
-                   "plateaus", "RUNSTATE.md", "Per-iteration brake", "JSTACK_ITER_MINUTES",
-                   "JSTACK_QUOTA_PROBE", "stagnation, not attempts", "observable",
+                   "plateaus", "RUNSTATE.md", "Per-iteration brake", "iteration_minutes",
+                   "quota-gate", "stagnation, not attempts", "observable",
                    "Two consecutive `INCONCLUSIVE`"):
         assert needle in text, needle
 

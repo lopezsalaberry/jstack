@@ -1,0 +1,81 @@
+#!/usr/bin/env python3
+"""doctor: say what is missing before the first run.
+
+  doctor [--repo PATH]
+
+Prints one line per check: `ok`, `warn` or `FAIL`, then the check and what to do.
+Exit 1 when a FAIL line was printed.
+"""
+from __future__ import annotations
+
+import argparse
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+SKILLS = HERE.parents[1]
+sys.path.insert(0, str(HERE))
+from importlib.machinery import SourceFileLoader  # noqa: E402
+
+settings = SourceFileLoader("jstack_settings", str(HERE / "jstack-settings")).load_module()
+
+
+def run(args: list[str]) -> subprocess.CompletedProcess:
+    return subprocess.run(args, capture_output=True, text=True)
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--repo", type=Path, default=Path.cwd())
+    args = ap.parse_args()
+    lines: list[tuple[str, str, str]] = []
+
+    def say(level: str, name: str, detail: str = "") -> None:
+        lines.append((level, name, detail))
+
+    say("ok" if sys.version_info >= (3, 9) else "FAIL", "python3 >= 3.9", f"found {sys.version.split()[0]}")
+    say("ok" if shutil.which("git") else "FAIL", "git", "" if shutil.which("git") else "install git")
+    if shutil.which("gh"):
+        auth = run(["gh", "auth", "status"])
+        say("ok" if auth.returncode == 0 else "FAIL", "gh authenticated",
+            "" if auth.returncode == 0 else "run `gh auth login`")
+    else:
+        say("FAIL", "gh", "install the GitHub CLI: https://cli.github.com")
+
+    repo = args.repo
+    inside = run(["git", "-C", str(repo), "rev-parse", "--is-inside-work-tree"]).returncode == 0 if shutil.which("git") else False
+    if not inside:
+        say("warn", "inside a git repo", f"{repo} is not a git work tree; repo checks skipped")
+    else:
+        remote = run(["git", "-C", str(repo), "remote", "get-url", "origin"])
+        say("ok" if remote.returncode == 0 else "warn", "origin remote",
+            "" if remote.returncode == 0 else "no `origin`; PR steps need one")
+        values = settings.resolve(repo)
+        configured = settings.block(repo / "AGENTS.md")
+        say("ok" if configured else "warn", "jstack settings in AGENTS.md",
+            "" if configured else "none found; defaults apply. Add a `## jstack settings` block (see the `jstack` skill)")
+        probe = values["quota_probe"]
+        if not Path(probe).exists() and not shutil.which(probe.split()[0]):
+            say("FAIL", "quota_probe command", f"{probe!r} not found")
+        else:
+            result = run([*probe.split(), "--provider", "doctor-check"])
+            ok = result.returncode in (0, 1, 2)
+            say("ok" if ok else "FAIL", "quota_probe runs", f"exit {result.returncode}; exit 2 means no data, which is not a block")
+
+    names = sorted(p.name for p in SKILLS.iterdir() if (p / "SKILL.md").exists())
+    for target in (Path.home() / ".claude" / "skills", Path.home() / ".agents" / "skills"):
+        if not target.exists():
+            continue
+        missing = [n for n in names if not (target / n / "SKILL.md").exists()]
+        say("ok" if not missing else "warn", f"skills linked in {target}",
+            "" if not missing else f"missing: {', '.join(missing)}; run ./install.sh")
+
+    for level, name, detail in lines:
+        print(f"{level:4} {name}" + (f": {detail}" if detail else ""))
+    sys.exit(1 if any(level == "FAIL" for level, _, _ in lines) else 0)
+
+
+if __name__ == "__main__":
+    main()

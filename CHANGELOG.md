@@ -2,6 +2,16 @@
 
 Format follows Keep a Changelog. Versions are tagged `vX.Y.Z`; install a tag, not `main`.
 
+## 0.7.2
+
+### Changed
+- `templates/AGENTS.md`, the file every repo reads on every task, now carries two rules that were
+  only in skills: a UI ticket that asks for a value the design system lacks stops with
+  `BLOCKED(decision)` even when the ticket gives the exact value, and every change starts its evidence
+  with `checklist-init` and gives each PASS a proof level. Found by running real agents on small
+  scenarios three times: a rule that lives only in a skill is followed only when the agent decides to
+  load the skill (design gate held 1 of 2 runs, proof checklist 0 of 2).
+
 ## 0.7.1
 
 ### Added

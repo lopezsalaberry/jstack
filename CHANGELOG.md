@@ -2,6 +2,21 @@
 
 Format follows Keep a Changelog. Versions are tagged `vX.Y.Z`; install a tag, not `main`.
 
+## 0.8.0
+
+### Added
+- `groom`: a skill the operator runs by hand to clean and rank the backlog and choose what to work on.
+  It proposes one verdict per ticket (a cancel needs named evidence), checks that what stays on top is
+  ready (`Touches:` and an observable `Done when:`), and puts every decision the operator owes in one
+  question. It changes the tracker only after a yes, and remembers parked tickets in the tracker itself,
+  so it keeps no file of its own. Nothing about it is scheduled.
+
+### Changed
+- `templates/AGENTS.md` carries four more rules, for the reason 0.7.2 found (a rule that lives only in a
+  skill is followed only when the agent loads the skill): a ticket enters the queue with `Touches:` and
+  `Done when:`; a user-visible ticket that integrates stays in review until the operator accepts; a
+  decision the operator gives goes into the product doc; a session starts with `wave-status` and the open PRs.
+
 ## 0.7.5
 
 ### Fixed

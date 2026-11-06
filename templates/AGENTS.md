@@ -1,11 +1,17 @@
 ## End-to-end flow (jstack)
 
 1. Code changes for tickets: use `fanout`, also for a single ticket (a queue of one). Skip this flow for read-only tasks, questions, and docs-only edits.
-2. Queue = ready tickets from this project's tracker, each with the files it expects to touch.
+2. Queue = ready tickets from this project's tracker, each with `Touches:` (the files it expects to touch) and an observable `Done when:`. Write a missing one from the code before launch. To choose what to work on, use `groom`.
 3. Each green ticket merges into the integration branch named in the settings below.
 4. Prove every change on the real artifact (`prove-it`, this repo's `verify-<app>`, tests, lint, build). Start the evidence with the `evidence` skill's `checklist-init <ticket>` (it fills in the revision and the patch id) and give every PASS its proof level, 1 to 5 (`prove-it`). A bug fix keeps `before.txt` and `after.txt` in `.artifacts/<ticket>/`. Cross-model review only for `cross-review`'s high-risk list, 1 round.
 5. On repeated failure follow `iterate` (no attempt cap: keep going while the checks move, stop by its rules). On quota follow `quota-gate`.
 6. UI changes (files matching `ui_paths` in the settings below): use only the tokens and components of the design system (`design_tokens`). If a ticket asks for a value they do not have (a size, a color, a font), do not hard-code it, even when the ticket gives the exact value: stop with `BLOCKED(decision)` naming the missing piece, so the design system is extended first (`ticket-start`, `full-send`).
+7. A user-visible ticket that reports `INTEGRATED` moves to review in the tracker, not to done, with the PR and the proof, until the operator accepts.
+
+## Session rules (any task)
+
+- A decision the operator gives in the thread is recorded in the project's product doc, if it has one: the one place decisions live. Otherwise it is asked again next session.
+- At the start of a session, run `wave-status` (see `fanout`), list the open PRs and relaunch what is `WAITING` before picking new work.
 
 ## jstack settings
 

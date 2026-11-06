@@ -87,3 +87,20 @@ def test_new_skill_is_listed_and_installable():
     assert (ROOT / "skills/iterate/SKILL.md").exists()
     notice = (ROOT / "NOTICE").read_text()
     assert "iterate" in notice and "figure-it-out" in notice
+
+
+def test_the_template_carries_the_session_rules():
+    """0.8.0: these rules live in the file every repo reads, not only in the groom skill. Each token must
+    sit on its own rule's line: a token that survives somewhere else does not keep the rule."""
+    lines = (ROOT / "templates/AGENTS.md").read_text().splitlines()
+    rules = {
+        "2. Queue =": ("`Touches:`", "`Done when:`", "`groom`"),
+        "7. A user-visible ticket": ("`INTEGRATED`", "review", "not to done"),
+        "- A decision": ("product doc",),
+        "- At the start": ("`wave-status`", "`WAITING`"),
+    }
+    for start, tokens in rules.items():
+        found = [line for line in lines if line.startswith(start)]
+        assert len(found) == 1, f"templates/AGENTS.md must have exactly one rule starting {start!r}"
+        for token in tokens:
+            assert token in found[0], f"rule {start!r} lost {token}"

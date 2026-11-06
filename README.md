@@ -13,7 +13,7 @@ repo; the only outside requirements are `git`, `gh` and `python3`.
 2. **Install.**
    ```sh
    git clone https://github.com/lopezsalaberry/jstack.git ~/jstack
-   cd ~/jstack && git checkout v0.7.5      # pin a tag; upstream is never auto-synced
+   cd ~/jstack && git checkout v0.8.0      # pin a tag; upstream is never auto-synced
    ./install.sh --dry-run                  # see what it would link
    ./install.sh
    ```
@@ -55,6 +55,7 @@ merges per day.
 |---|---|
 | `jstack` | Settings, harness actions, status words and the `RUNSTATE.md` format every other skill uses; `doctor` |
 | `fanout` | Distinct tickets in parallel, one level, quota-limited; `wave-status` shows the wave |
+| `groom` | By hand: clean and rank the backlog, check what is ready, offer what to work on; changes nothing without a yes |
 | `ticket-start` | Scope check, then worktree and branch per ticket |
 | `quota-gate` | Launch, switch provider or pause from model quota; ships a file-based `quota-probe` |
 | `full-send` | Prove, PR, babysit, integrate, or stop before merge; blocks a UI change that leaves the design system |

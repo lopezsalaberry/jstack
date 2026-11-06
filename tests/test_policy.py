@@ -104,3 +104,12 @@ def test_the_template_carries_the_session_rules():
         assert len(found) == 1, f"templates/AGENTS.md must have exactly one rule starting {start!r}"
         for token in tokens:
             assert token in found[0], f"rule {start!r} lost {token}"
+
+
+def test_groom_never_sends_delivered_work_to_canceled():
+    """0.8.1: the first run found merged tickets; groom had listed 'already on the integration branch' as a cancel reason."""
+    text = (ROOT / "skills/groom/SKILL.md").read_text()
+    cancel = next(line for line in text.splitlines() if "CANCEL only with evidence" in line)
+    assert "integration branch" not in cancel, "merged work is DELIVERED, not a reason to cancel"
+    delivered = next(line for line in text.splitlines() if line.strip().startswith("- DELIVERED"))
+    assert "never to canceled" in text and "merge-base --is-ancestor" in text and delivered

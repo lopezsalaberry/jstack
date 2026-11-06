@@ -2,6 +2,16 @@
 
 Format follows Keep a Changelog. Versions are tagged `vX.Y.Z`; install a tag, not `main`.
 
+## 0.8.1
+
+### Fixed
+- `groom` listed "already on the integration branch" as a reason to CANCEL. Work that is already merged is
+  delivered, not canceled. It now has its own verdict, DELIVERED: move it to review with the commit and PR,
+  never to canceled, and it is done only when the operator accepts. A commit that names the ticket is not
+  proof that its acceptance criteria hold, so the skill says to name what was not checked. It also says to
+  give no verdict on a ticket it could not verify. Found the first time it ran on a real backlog: 8 tickets
+  still in Todo had been merged five days earlier.
+
 ## 0.8.0
 
 ### Added

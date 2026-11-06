@@ -8,12 +8,17 @@ description: "Clean and rank the project's backlog when the operator asks, then 
 Run by hand, when the operator asks. Nothing here is scheduled.
 
 1. **Read.** The open tickets of the project's tracker, and the detail of every ticket you act
-   on: a list view can show a stale status.
-2. **One verdict per ticket, one line each:** KEEP, CANCEL, FOLD into another ticket, PARK until a
-   date, or ESCALATE.
-   - CANCEL only with evidence you can name: a duplicate of an open ticket, already on the
-     integration branch (grep the surfaces the ticket names and `git log --grep` its id), or
-     contradicted by a recorded decision. Say which one.
+   on: a list view can show a stale status. Say which tickets you could not verify and give no
+   verdict on them.
+2. **One verdict per ticket, one line each:** KEEP, CANCEL, DELIVERED, FOLD into another ticket, PARK
+   until a date, or ESCALATE.
+   - CANCEL only with evidence you can name: a duplicate of an open ticket, or contradicted by a
+     recorded decision. Say which one.
+   - DELIVERED is work already on the integration branch: its commit is an ancestor of it (find it
+     with `git log --grep` on the id, confirm with `git merge-base --is-ancestor`). Move it to review
+     with the commit and PR in a comment, never to canceled: it is done only when the operator accepts.
+     A commit that names the ticket does not prove its acceptance criteria hold; say what you did not
+     check.
    - Real movement is a creation, a status, title or priority change, or a commit. The
      last-updated time and bot comments are not movement: bulk edits reset them.
    - PARK writes the date and the reason in the tracker (a label or a comment). That is the only

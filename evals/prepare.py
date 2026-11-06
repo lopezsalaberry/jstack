@@ -82,7 +82,10 @@ def git_facts(clone_dir: Path, subdir: str) -> dict:
 
 
 def file_facts(root: Path) -> dict:
-    files = [p for p in root.rglob("*") if p.is_file()]
+    everything = [p for p in root.rglob("*") if p.is_file()]
+    # `_repo_context` holds repo-level files around a plugin (CI, generated copies). They count
+    # for CI only; counting them elsewhere would double a plugin's skills and tests.
+    files = [p for p in everything if not p.relative_to(root).as_posix().startswith("_repo_context/")]
     rel = {p: p.relative_to(root).as_posix() for p in files}
     text: dict[Path, str] = {}
     for p in files:
@@ -106,7 +109,7 @@ def file_facts(root: Path) -> dict:
             harness[token] += body.count(token)
         models.update(MODEL_RE.findall(body))
         personal += len(PERSONAL_RE.findall(body))
-    workflows = [rel[p] for p in files if ".github/workflows/" in rel[p] or rel[p].startswith(".github/workflows/")]
+    workflows = [p.relative_to(root).as_posix() for p in everything if ".github/workflows/" in p.relative_to(root).as_posix()]
     lower = {rel[p].lower() for p in files}
     return {
         "files": len(files),

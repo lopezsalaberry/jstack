@@ -27,8 +27,12 @@ SOURCES = {
     "pstack": {"url": "https://github.com/cursor/plugins.git", "subdir": "pstack",
                "extra": [".github", "scripts", "harness/pstack"], "exclude": []},
     "jstack": {"url": "https://github.com/lopezsalaberry/jstack.git", "subdir": "", "extra": [],
-               "exclude": ["evals"]},
+               "exclude": ["evals", "tests/test_evals.py"]},
 }
+# Identities that would let a judge recognise a project by reputation. Product and harness names
+# (Claude Code, Codex, Cursor, T3 Code) are NOT redacted: they are facts that portability depends on.
+IDENTITIES = ("jstack", "tstack", "pstack", "rstack", "poteto", "t3dotgg", "theo browne", "backnotprop",
+              "michaelshimeles", "michael-denyer", "lopezsalaberry", "lauren tan")
 HARNESS_TOKENS = ("delegate_task", "watch_pull_request", "AskUserQuestion", "request_user_input",
                   "spawn_agent", "ScheduleWakeup", "Monitor", "TaskCreate", "Task tool", "subagent")
 MODEL_RE = re.compile(r"\b(gpt-[\w.\-]+|claude-[\w.\-]+|grok[\w.\-]*|gemini[\w.\-]*|opus[\w.\-]*|sonnet[\w.\-]*)")
@@ -135,6 +139,35 @@ def file_facts(root: Path) -> dict:
     }
 
 
+def redact(root: Path, tokens: dict[str, str]) -> int:
+    """Replace project and author identities in file contents and in path names, in the judge's copy only.
+    The same identity gets the same token everywhere, so cross-references stay readable
+    ("adapted from proj2") while the brand does not. Returns the number of replacements."""
+    order = sorted(tokens, key=len, reverse=True)
+    pattern = re.compile("|".join(re.escape(n) for n in order), re.IGNORECASE)
+
+    def sub(match: re.Match) -> str:
+        token = tokens[match.group(0).lower()]
+        return token.upper() if match.group(0).isupper() else token
+
+    count = 0
+    for p in sorted(root.rglob("*"), key=lambda q: len(q.parts), reverse=True):  # children before parents
+        if p.is_file():
+            try:
+                body = p.read_text()
+            except (UnicodeDecodeError, OSError):
+                continue
+            new, n = pattern.subn(sub, body)
+            if n:
+                p.write_text(new)
+                count += n
+        renamed = pattern.sub(sub, p.name)
+        if renamed != p.name:
+            p.rename(p.with_name(renamed))
+            count += 1
+    return count
+
+
 def prepare(out: Path, seed: int, sources: dict) -> dict:
     if out.exists() and any(out.iterdir()):
         sys.exit(f"{out} is not empty")
@@ -145,6 +178,9 @@ def prepare(out: Path, seed: int, sources: dict) -> dict:
     labels = ["A", "B", "C"][: len(names)]
     random.Random(seed).shuffle(names)
     mapping: dict = {}
+    order = list(IDENTITIES)
+    random.Random(seed + 1).shuffle(order)
+    tokens = {n: f"proj{i}" for i, n in enumerate(order, 1)}
     for label, name in zip(labels, names):
         spec = sources[name]
         clone_dir = private / "clones" / name
@@ -157,7 +193,8 @@ def prepare(out: Path, seed: int, sources: dict) -> dict:
                 archive(clone_dir, [extra], dest / "_repo_context" / extra, strip=extra)
             except subprocess.CalledProcessError:
                 pass
-        facts = {"label": label, "snapshot_note": "mechanical facts; the judge reads the files for the rest",
+        replaced = redact(dest, tokens)
+        facts = {"label": label, "identity_replacements": replaced, "snapshot_note": "mechanical facts; the judge reads the files for the rest",
                  "git": git_facts(clone_dir, sub), "files": file_facts(dest)}
         (judge / f"{label}.evidence.json").write_text(json.dumps(facts, indent=2) + "\n")
         mapping[label] = {"project": name, "url": spec["url"], "subdir": sub, "sha": sha}

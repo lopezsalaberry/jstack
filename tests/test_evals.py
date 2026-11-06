@@ -113,3 +113,34 @@ def test_aggregate_rejects_missing_or_out_of_range_scores(tmp_path):
 def test_judge_answer_is_found_inside_prose_or_a_code_fence():
     agg = load("aggregate")
     assert agg.extract_json('Here you go:\n```json\n{"a": 1}\n```\n') == {"a": 1}
+
+
+def test_no_identity_survives_in_contents_or_paths_and_references_stay_consistent(tmp_path):
+    prepare = load("prepare")
+    src = {
+        "tstack": make_repo(tmp_path / "t", {"README.md": "tstack by Theo Browne\n", "skills/a/SKILL.md": "x\n"}),
+        "pstack": make_repo(tmp_path / "p", {"pstack/skills/poteto-mode/SKILL.md": "Use /poteto-mode. PSTACK rules.\n",
+                                             "pstack/README.md": "i'm poteto\n"}),
+        "jstack": make_repo(tmp_path / "j", {"skills/b/SKILL.md": "> Source: tstack, adapted from pstack\n",
+                                             "install.sh": "echo JSTACK_QUOTA_PROBE\n",
+                                             "tests/test_evals.py": "meta\n", "tests/test_x.py": "pass\n"}),
+    }
+    out = tmp_path / "run"
+    mapping = prepare.prepare(out, 5, prepare.parse_sources([f"{k}={v}" for k, v in src.items()]))
+    judge = out / "judge"
+    banned = [n for n in prepare.IDENTITIES]
+    for path in judge.rglob("*"):
+        assert not any(n in path.name.lower() for n in banned), path
+        if path.is_file():
+            body = path.read_text().lower()
+            assert not any(n in body for n in banned), (path, [n for n in banned if n in body])
+    j = next(k for k, v in mapping.items() if v["project"] == "jstack")
+    p = next(k for k, v in mapping.items() if v["project"] == "pstack")
+    t = next(k for k, v in mapping.items() if v["project"] == "tstack")
+    # the same identity gets the same token everywhere: jstack's source line and tstack's own README agree
+    token_of_t = (judge / t / "README.md").read_text().split(" by ")[0]
+    assert token_of_t in (judge / j / "skills" / "b" / "SKILL.md").read_text()
+    # upper-case forms stay upper-case, so env var names still read like env var names
+    assert "_QUOTA_PROBE" in (judge / j / "install.sh").read_text()
+    assert (judge / p / "skills").exists() and not (judge / j / "tests" / "test_evals.py").exists()
+    assert (judge / j / "tests" / "test_x.py").exists()

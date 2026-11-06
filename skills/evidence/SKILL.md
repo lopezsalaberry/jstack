@@ -30,10 +30,13 @@ Note the revision under test: `git rev-parse HEAD` and the branch.
 
 ## 3. Checklist
 
-Write `.artifacts/<ticket>/checklist.md`: revision, patch id (`scripts/proof-valid --print`
-prints both), environment, then one line per target: `PASS` or `FAIL`, the proof level from
-`prove-it`, what you saw, and the screenshot or output file. For a bug fix also keep
+Run `scripts/checklist-init <ticket>` first, even for a one-line fix. It creates
+`.artifacts/<ticket>/checklist.md` with the revision, the patch id and the table already laid out
+(and keeps `.artifacts/` out of commits). Then fill one row per target: `PASS` or `FAIL`, the proof
+level from `prove-it`, what you saw, and the screenshot or output file. For a bug fix also keep
 `before.txt` (the failing output before the fix) and `after.txt` (the passing output after it).
+A small change gets a short checklist, never no checklist: it is what lets `proof-valid` tell a
+later reader whether the proof still describes the patch.
 A target you could not exercise is `FAIL`, not skipped. Never weaken a target
 to make it pass.
 

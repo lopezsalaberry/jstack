@@ -1,0 +1,73 @@
+#!/usr/bin/env python3
+"""checklist-init: start a ticket's evidence checklist with the boring parts already filled in.
+
+  checklist-init TICKET [--dir .artifacts] [--base REF] [--env TEXT] [--force]
+
+Creates <dir>/<TICKET>/checklist.md with the current revision, the patch id (so `proof-valid` can later
+say whether the proof still describes the patch that will land), the proof levels from `prove-it`, and an
+empty table with one row to copy per target. Also keeps the artifacts folder out of commits through
+.git/info/exclude (local, never committed). Refuses to overwrite an existing checklist without --force.
+Exit 0 created, 1 already exists, 2 not in a git repo or no base branch.
+"""
+from __future__ import annotations
+
+import argparse
+import subprocess
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+
+TEMPLATE = """# Evidence: {ticket}
+
+Revision: {revision}
+Patch-id: {patch}
+Environment: {env}
+
+Levels (see `prove-it`): 1 you said so, 2 you pointed at the line, 3 you walked the failing case,
+4 you ran it, 5 you reproduced it in the delivered artifact. A target is PASS only at level 4 or 5.
+A target you could not exercise is FAIL, never skipped.
+
+| Target | Result | Level | What I saw | File |
+|---|---|---|---|---|
+| <the thing the ticket asks for> | PASS or FAIL | 1 to 5 | <command, output, behavior> | <screenshot or output file> |
+
+For a bug fix keep `before.txt` (the failing output before the fix) and `after.txt` (the passing
+output after it), both verbatim.
+"""
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("ticket")
+    ap.add_argument("--dir", default=".artifacts")
+    ap.add_argument("--base")
+    ap.add_argument("--env", default="<where it ran: machine, browser, simulator, command>")
+    ap.add_argument("--force", action="store_true")
+    args = ap.parse_args()
+    target = Path(args.dir) / args.ticket / "checklist.md"
+    if target.exists() and not args.force:
+        print(f"checklist-init: {target} already exists; edit it, or pass --force to start over", file=sys.stderr)
+        sys.exit(1)
+    cmd = [sys.executable, str(HERE / "proof-valid"), "--print"] + (["--base", args.base] if args.base else [])
+    printed = subprocess.run(cmd, capture_output=True, text=True)
+    if printed.returncode != 0:
+        print(f"checklist-init: {printed.stderr.strip()}", file=sys.stderr)
+        sys.exit(2)
+    fields = dict(line.split(": ", 1) for line in printed.stdout.splitlines() if ": " in line)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(TEMPLATE.format(ticket=args.ticket, revision=fields.get("Revision", "?"),
+                                      patch=fields.get("Patch-id", "?"), env=args.env))
+    exclude = subprocess.run(["git", "rev-parse", "--git-path", "info/exclude"], capture_output=True, text=True)
+    if exclude.returncode == 0:
+        path = Path(exclude.stdout.strip())
+        folder = args.dir.rstrip("/") + "/"
+        if not path.exists() or folder not in path.read_text().splitlines():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("a") as handle:
+                handle.write(folder + "\n")
+    print(target)
+
+
+if __name__ == "__main__":
+    main()

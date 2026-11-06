@@ -2,6 +2,14 @@
 
 Format follows Keep a Changelog. Versions are tagged `vX.Y.Z`; install a tag, not `main`.
 
+## 0.7.1
+
+### Added
+- `evidence/scripts/checklist-init`: one command creates a ticket's checklist with the revision, the
+  patch id and the table laid out. Found by running the skills with a real agent: it fixed a bug and kept
+  before/after output but skipped the proof level and the patch id, because writing them by hand cost
+  more than the fix. Making compliance cheap, not lowering the bar.
+
 ## 0.7.0
 
 Proof and validation hardened, after reading how the projects that inspired jstack do it.

@@ -14,6 +14,7 @@ WAVE = ROOT / "skills/fanout/scripts/wave-status"
 PRWAIT = ROOT / "skills/babysit-pr/scripts/pr-wait"
 PROOFVALID = ROOT / "skills/evidence/scripts/proof-valid"
 TRAIL = ROOT / "skills/jstack/scripts/trail"
+CHECKLIST = ROOT / "skills/evidence/scripts/checklist-init"
 TOKENLINT = ROOT / "skills/full-send/scripts/token-lint"
 
 
@@ -376,3 +377,22 @@ def test_token_lint_skips_token_definition_files_and_hairlines(tmp_path):
     (r / "wide.css").write_text(".w { width: 13px; }\n")
     commit_all(r)
     assert lint(r).returncode == 1
+
+
+def test_checklist_init_starts_a_proof_that_proof_valid_accepts(tmp_path):
+    r = repo(tmp_path)
+    git(r, "checkout", "-q", "-b", "feat")
+    (r / "a.txt").write_text("1\n")
+    commit_all(r)
+    made = run([CHECKLIST, "T-9", "--base", "main"], cwd=r)
+    assert made.returncode == 0, made.stderr
+    text = (r / ".artifacts/T-9/checklist.md").read_text()
+    assert "Patch-id: " in text and "Revision: " in text and "A target is PASS only at level 4 or 5" in text
+    assert run([PROOFVALID, "--checklist", r / ".artifacts/T-9/checklist.md", "--base", "main"], cwd=r).returncode == 0
+    assert ".artifacts/" in (r / ".git/info/exclude").read_text()          # never committed
+    assert subprocess.run(["git", "-C", str(r), "status", "--porcelain"], capture_output=True, text=True).stdout.strip() == ""
+    again = run([CHECKLIST, "T-9", "--base", "main"], cwd=r)
+    assert again.returncode == 1 and "already exists" in again.stderr
+    (r / "a.txt").write_text("2\n")
+    commit_all(r)
+    assert run([PROOFVALID, "--checklist", r / ".artifacts/T-9/checklist.md", "--base", "main"], cwd=r).returncode == 1

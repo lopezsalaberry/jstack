@@ -28,6 +28,10 @@ DEFAULTS = {
     "max_parallel": "",
     "review_bots": "",
     "advisory_bots": "",
+    "verify_mode": "visible",
+    "ui_paths": "",
+    "design_tokens": "design/tokens.json",
+    "design_check": "",
     "posthoc_queue": "",
     "paid_fallback": "off",
 }

@@ -1,0 +1,92 @@
+#!/usr/bin/env python3
+"""proof-valid: does a recorded proof still describe the patch that will land?
+
+  proof-valid --print [--base REF]
+  proof-valid --checklist FILE [--base REF]
+  proof-valid --patch-id ID [--base REF]
+
+A proof covers a patch, not a commit. A rebase gives every commit a new SHA without changing the
+change, so comparing SHAs says "stale" when nothing moved, and trusting an old SHA hides real edits.
+This compares the patch id (`git patch-id --stable`) of everything the current HEAD adds over BASE
+with the one recorded when the proof was made.
+
+--print        print `Revision:` and `Patch-id:` lines for HEAD, to paste into the checklist
+--checklist    read the `Patch-id:` line of an evidence checklist and compare it with HEAD
+--patch-id     compare a given id with HEAD
+
+BASE defaults to the remote's default branch (origin/HEAD), then origin/main, main, master.
+Exit 0 same patch, 1 the patch changed (print both ids), 2 usage error or no way to compute.
+"""
+from __future__ import annotations
+
+import argparse
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+
+def git(*args: str, input: str | None = None, check: bool = True) -> str:
+    proc = subprocess.run(["git", *args], capture_output=True, text=True, input=input)
+    if check and proc.returncode != 0:
+        print(f"proof-valid: git {' '.join(args[:2])} failed: {proc.stderr.strip()}", file=sys.stderr)
+        sys.exit(2)
+    return proc.stdout
+
+
+def default_base() -> str:
+    head = git("symbolic-ref", "--short", "refs/remotes/origin/HEAD", check=False).strip()
+    if head:
+        return head
+    for candidate in ("origin/main", "main", "master"):
+        if subprocess.run(["git", "rev-parse", "--verify", "-q", candidate], capture_output=True).returncode == 0:
+            return candidate
+    print("proof-valid: cannot find a base branch; pass --base", file=sys.stderr)
+    sys.exit(2)
+
+
+def patch_id(base: str, ref: str = "HEAD") -> str:
+    fork = git("merge-base", base, ref).strip()
+    diff = git("diff", fork, ref)
+    if not diff.strip():
+        return "empty"
+    out = git("patch-id", "--stable", input=diff).split()
+    return out[0] if out else "empty"
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--base")
+    group = ap.add_mutually_exclusive_group(required=True)
+    group.add_argument("--print", action="store_true", dest="show")
+    group.add_argument("--checklist", type=Path)
+    group.add_argument("--patch-id", dest="recorded")
+    args = ap.parse_args()
+    base = args.base or default_base()
+    now = patch_id(base)
+    if args.show:
+        print(f"Revision: {git('rev-parse', 'HEAD').strip()}")
+        print(f"Patch-id: {now}")
+        return
+    if args.checklist:
+        try:
+            text = args.checklist.read_text()
+        except OSError as error:
+            print(f"proof-valid: {error}", file=sys.stderr)
+            sys.exit(2)
+        match = re.search(r"^Patch-id:\s*(\S+)", text, re.M)
+        if not match:
+            print(f"proof-valid: no `Patch-id:` line in {args.checklist}; the proof cannot be tied to a patch", file=sys.stderr)
+            sys.exit(2)
+        recorded = match.group(1)
+    else:
+        recorded = args.recorded
+    if recorded == now:
+        print(f"proof-valid: same patch ({now})")
+        return
+    print(f"proof-valid: the patch changed since the proof (recorded {recorded}, now {now}); prove again")
+    sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

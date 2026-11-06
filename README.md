@@ -13,7 +13,7 @@ repo; the only outside requirements are `git`, `gh` and `python3`.
 2. **Install.**
    ```sh
    git clone https://github.com/lopezsalaberry/jstack.git ~/jstack
-   cd ~/jstack && git checkout v0.6.1      # pin a tag; upstream is never auto-synced
+   cd ~/jstack && git checkout v0.7.0      # pin a tag; upstream is never auto-synced
    ./install.sh --dry-run                  # see what it would link
    ./install.sh
    ```
@@ -57,17 +57,27 @@ merges per day.
 | `fanout` | Distinct tickets in parallel, one level, quota-limited; `wave-status` shows the wave |
 | `ticket-start` | Scope check, then worktree and branch per ticket |
 | `quota-gate` | Launch, switch provider or pause from model quota; ships a file-based `quota-probe` |
-| `full-send` | Prove, PR, babysit, integrate, or stop before merge |
+| `full-send` | Prove, PR, babysit, integrate, or stop before merge; blocks a UI change that leaves the design system |
 | `takeover` | Finish or revive someone else's PR, keeping their credit |
 | `file-pr` | Open a real PR against the integration branch |
 | `babysit-pr` | Drive a PR to green with `pr-wait`; counts fix attempts (no cap) |
 | `iterate` | The measured loop that replaces attempt caps: hypothesis, smallest change, verdict, attack the premise, budgets are not failures |
-| `cross-review` | One-round review by a model of another family, high-risk only; findings must be proven by a run |
-| `prove-it` | Verify the real artifact before done |
-| `evidence` | Local checklist, screenshots, optional video in `.artifacts/`, summary in the PR |
+| `cross-review` | One round by an agent that did not write the change: break mode for high-risk changes (findings must be proven by a run), verify mode for user-visible ones (PASS, PASS+NOTES, FAIL) |
+| `prove-it` | Verify the real artifact before done; five levels of how sure you are; tests that prove something |
+| `evidence` | Local checklist with proof levels, screenshots, before/after output in `.artifacts/`; `proof-valid` says whether a proof still describes the patch |
 | `leaving-pr-comments` | How an agent posts PR comments on the user's behalf |
 | `create-verify` | Generate a project's `verify-<app>` (it lives in that project) |
 | `correct-mistakes` | Turn repeated agent mistakes into checks |
+
+## UI changes
+
+Set `ui_paths` to mark which files are UI. Then the design gate applies twice. When a ticket is
+dispatched, `fanout` puts a Design block in its brief and `ticket-start` records a baseline and the
+components to reuse; a missing component stops the ticket with `BLOCKED(decision)` instead of being
+improvised. When the ticket is proved, `full-send` runs the design check (`token-lint` by default),
+compares screenshots with the design source, and the independent verifier checks the design lane too.
+A new off-token color, size or font blocks the merge. A tool can prove the tokens, not that the screen
+looks like the design, so a visual mismatch also blocks until someone decides.
 
 ## Settings
 
@@ -104,8 +114,9 @@ jstack is built on ideas and some text from these projects. Exact commits and li
   lifecycle (`full-send`, `file-pr`, `babysit-pr`, `leaving-pr-comments`, the `pr-wait` watcher) and
   the practice of cross-model review.
 - **pstack** by Cursor, [cursor/plugins](https://github.com/cursor/plugins/tree/main/pstack): the
-  hypothesis loop and verdicts behind `iterate`, `prove-it`, `create-verify`, `correct-mistakes`,
-  and the fan-out pattern.
+  hypothesis loop and verdicts behind `iterate`, `prove-it` and its proof levels, `create-verify`,
+  `correct-mistakes`, the fan-out pattern, and, from its shipping and babysit playbooks, the
+  independent verifier, the proof that follows the patch, the red-CI triage and the decision trail.
 - **rstack** by Michael Shimeles, [michaelshimeles/rstack](https://github.com/michaelshimeles/rstack):
   the ticket-start steps and the evidence protocol.
 

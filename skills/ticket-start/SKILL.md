@@ -25,6 +25,18 @@ branch directly and never reuse another ticket's worktree.
    `git branch -D <prefix>/<name>`. `-D` is expected: after a squash or rebase
    merge, `-d` refuses even though the work is merged.
 
+## UI tickets
+
+If the ticket touches `ui_paths` (see `jstack`), do this before the first edit, in the new
+worktree:
+
+- Run the design check once on the untouched branch and keep its output: that is the baseline,
+  so violations that were already there are not blamed on this ticket.
+- Read the design sources (`design_tokens`, and the project's components and screens) and write in
+  `RUNSTATE.md` which tokens and components you will reuse.
+- If the design system does not have something the ticket needs, stop with `BLOCKED(decision)`
+  naming the missing piece. Do not improvise it in code.
+
 ## Remember
 
 - Worktrees do not isolate dev-server ports or shared databases. Confirm a

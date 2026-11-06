@@ -1,0 +1,67 @@
+#!/usr/bin/env python3
+"""trail: an append-only record of decisions for work nobody is watching.
+
+  trail FILE PHASE DECISION WHY EVIDENCE RESULT
+  trail --check FILE
+
+One tab-separated row per decision: ts, phase, decision, why, evidence, result. Evidence is a pointer
+(commit SHA, PR number, file:line, artifact path), never a paragraph. The file is only ever appended
+to. A wrong call gets a new row that supersedes it; history is never edited. The first row of a run
+that continues a file written before uses the phase `start`.
+
+Cells are single-line: tabs and newlines become spaces. A cell that starts with = + - or @ gets a
+leading quote so a spreadsheet does not run it as a formula.
+--check validates that every row has six cells and a timestamp. Exit 0 ok, 1 malformed, 2 usage.
+"""
+from __future__ import annotations
+
+import datetime as dt
+import re
+import sys
+from pathlib import Path
+
+HEADER = ["ts", "phase", "decision", "why", "evidence", "result"]
+
+
+def clean(cell: str) -> str:
+    cell = re.sub(r"[\t\r\n]+", " ", cell).strip()
+    return "'" + cell if cell[:1] in "=+-@" else cell
+
+
+def check(path: Path) -> int:
+    bad = 0
+    rows = path.read_text().splitlines()
+    if not rows or rows[0].split("\t") != HEADER:
+        print(f"trail: {path}: missing header row", file=sys.stderr)
+        bad += 1
+    for number, row in enumerate(rows[1:], 2):
+        cells = row.split("\t")
+        if len(cells) != 6 or not re.match(r"^\d{4}-\d\d-\d\dT", cells[0]):
+            print(f"trail: {path}:{number}: expected 6 cells and an ISO timestamp", file=sys.stderr)
+            bad += 1
+    return 1 if bad else 0
+
+
+def main() -> None:
+    args = sys.argv[1:]
+    if len(args) == 2 and args[0] == "--check":
+        path = Path(args[1])
+        if not path.is_file():
+            print(f"trail: {path} does not exist", file=sys.stderr)
+            sys.exit(2)
+        sys.exit(check(path))
+    if len(args) != 6:
+        print(__doc__, file=sys.stderr)
+        sys.exit(2)
+    path = Path(args[0])
+    row = [dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), *map(clean, args[1:])]
+    new_file = not path.exists() or path.stat().st_size == 0
+    with path.open("a") as handle:  # append only: opening for write would erase history
+        if new_file:
+            handle.write("\t".join(HEADER) + "\n")
+        handle.write("\t".join(row) + "\n")
+    print("\t".join(row))
+
+
+if __name__ == "__main__":
+    main()

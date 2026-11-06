@@ -12,6 +12,9 @@ DOCTOR = ROOT / "skills/jstack/scripts/doctor"
 PROBE = ROOT / "skills/quota-gate/scripts/quota-probe"
 WAVE = ROOT / "skills/fanout/scripts/wave-status"
 PRWAIT = ROOT / "skills/babysit-pr/scripts/pr-wait"
+PROOFVALID = ROOT / "skills/evidence/scripts/proof-valid"
+TRAIL = ROOT / "skills/jstack/scripts/trail"
+TOKENLINT = ROOT / "skills/full-send/scripts/token-lint"
 
 
 def run(cmd, cwd=None, env=None, timeout=60):
@@ -213,3 +216,163 @@ def test_pr_wait_reports_a_failed_check_and_exits_1(tmp_path):
     env = fake_gh(tmp_path, [{"name": "ci", "bucket": "fail", "link": "http://x/run/1", "description": ""}])
     done = run([PRWAIT, "7", "--repo", "o/r", "--interval", "5"], cwd=tmp_path, env=env, timeout=20)
     assert done.returncode == 1 and "check failed: ci http://x/run/1" in done.stdout
+
+
+# --- proof follows the patch, not the commit -----------------------------------
+
+def commit_all(path, message="x"):
+    git(path, "add", "-A")
+    git(path, "commit", "-q", "-m", message)
+
+
+def test_proof_follows_the_patch_not_the_commit(tmp_path):
+    r = repo(tmp_path)
+    git(r, "checkout", "-q", "-b", "feat")
+    (r / "a.txt").write_text("1\n")
+    commit_all(r)
+    checklist = tmp_path / "checklist.md"
+    checklist.write_text("Revision: whatever\n" + run([PROOFVALID, "--print", "--base", "main"], cwd=r).stdout)
+    check = lambda: run([PROOFVALID, "--checklist", checklist, "--base", "main"], cwd=r)
+    assert check().returncode == 0
+    # main moves on with unrelated work and the branch is rebased: new SHA, same change
+    git(r, "checkout", "-q", "main")
+    (r / "other.txt").write_text("o\n")
+    commit_all(r)
+    git(r, "checkout", "-q", "feat")
+    assert check().returncode == 0, "main moving on must not invalidate a proof before any rebase"
+    git(r, "rebase", "-q", "main")
+    assert check().returncode == 0, "a rebase alone must not invalidate a proof"
+    (r / "a.txt").write_text("2\n")
+    commit_all(r)
+    stale = check()
+    assert stale.returncode == 1 and "prove again" in stale.stdout, "a real edit must invalidate it"
+
+
+def test_proof_valid_refuses_a_checklist_that_names_no_patch(tmp_path):
+    r = repo(tmp_path)
+    checklist = tmp_path / "c.md"
+    checklist.write_text("Revision: abc\nPASS something\n")
+    bad = run([PROOFVALID, "--checklist", checklist, "--base", "main"], cwd=r)
+    assert bad.returncode == 2 and "Patch-id" in bad.stderr
+
+
+# --- decision trail --------------------------------------------------------------
+
+def test_trail_only_appends_and_neutralizes_formulas(tmp_path):
+    log = tmp_path / "TRAIL.tsv"
+    run([TRAIL, log, "frame", "counted the work", "to size it", "commit 3a9f1c2", "found 5 things"], cwd=tmp_path)
+    first = log.read_text()
+    run([TRAIL, log, "build", "=HYPERLINK(\"x\")", "multi\nline\twhy", "pr 12", "green"], cwd=tmp_path)
+    after = log.read_text()
+    assert after.startswith(first), "earlier rows must never change"
+    rows = [r.split("\t") for r in after.splitlines()]
+    assert rows[0][:3] == ["ts", "phase", "decision"] and len(rows) == 3
+    assert rows[2][2] == "'=HYPERLINK(\"x\")" and rows[2][3] == "multi line why"
+    assert all(len(r) == 6 for r in rows)
+    assert run([TRAIL, "--check", log], cwd=tmp_path).returncode == 0
+    log.write_text(after + "not\ta\trow\n")
+    assert run([TRAIL, "--check", log], cwd=tmp_path).returncode == 1
+
+
+# --- token lint: the mechanical half of the UI gate ---------------------------------
+
+TOKENS = ('{"color": {"primary": {"$value": "#3366ff"}, "text": {"value": "#111111"}},'
+          ' "space": {"md": "16px", "lg": {"$value": "24px"}}, "font": {"body": "Inter, sans-serif"}}')
+
+
+def ui_repo(tmp_path):
+    r = repo(tmp_path)
+    (r / "design").mkdir()
+    (r / "design/tokens.json").write_text(TOKENS)
+    (r / "old.css").write_text("a { color: #abcdef; }\n")        # an existing violation: never blocks
+    commit_all(r, "base")
+    git(r, "checkout", "-q", "-b", "feat")
+    return r
+
+
+def lint(r, *extra):
+    return run([TOKENLINT, "--base", "main", *extra], cwd=r)
+
+
+def test_token_lint_passes_tokens_and_ignores_old_and_non_ui_lines(tmp_path):
+    r = ui_repo(tmp_path)
+    (r / "ok.css").write_text(".btn { color: #3366FF; padding: 16px; margin: 0; font-family: Inter, sans-serif; }\n"
+                              ".t { color: var(--text); gap: 24px; }\n")
+    (r / "notes.md").write_text("see #ff0000 and 13px\n")      # not a UI file
+    commit_all(r)
+    done = lint(r)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "no new off-token literals" in done.stdout
+
+
+def test_token_lint_blocks_off_token_literals_and_suggests_the_nearest_color(tmp_path):
+    r = ui_repo(tmp_path)
+    (r / "bad.css").write_text(".x { color: #3367ff; padding: 13px; font-family: 'Comic Sans'; background: rgb(1, 2, 3); }\n")
+    commit_all(r)
+    out = lint(r)
+    assert out.returncode == 1
+    assert "#3367ff" in out.stdout and "nearest: color.primary" in out.stdout
+    assert "13px" in out.stdout and "comic sans" in out.stdout and "rgb(1, 2, 3)" in out.stdout
+    assert "#abcdef" not in out.stdout                          # the old line is not this change's fault
+    assert "bad.css:1" in out.stdout
+
+
+def test_token_lint_sees_untracked_and_uncommitted_files(tmp_path):
+    r = ui_repo(tmp_path)
+    (r / "new.css").write_text(".x { color: #010203; }\n")      # never added to git
+    assert lint(r).returncode == 1
+
+
+def test_token_lint_exceptions_need_a_reason(tmp_path):
+    r = ui_repo(tmp_path)
+    (r / "bad.css").write_text(".x { padding: 13px; }\n")
+    commit_all(r)
+    (r / "design/token-allow.txt").write_text("bad.css 13px  # legacy widget, ticket 42\n")
+    assert lint(r).returncode == 0
+    (r / "design/token-allow.txt").write_text("bad.css 13px\n")
+    no_reason = lint(r)
+    assert no_reason.returncode == 2 and "reason" in no_reason.stderr
+
+
+def test_token_lint_without_tokens_is_a_usage_error_not_a_pass(tmp_path):
+    r = repo(tmp_path)
+    missing = lint(r)
+    assert missing.returncode == 2 and "design tokens first" in missing.stderr
+
+
+def test_token_lint_reads_the_token_files_real_projects_use(tmp_path):
+    """Lists of font families, numeric weights, and a system that defines no size tokens at all."""
+    r = repo(tmp_path)
+    (r / "design").mkdir()
+    (r / "design/tokens.json").write_text(
+        '{"color": {"bg": {"$value": "#ffffff"}}, "font": {"sans": ["Geist Variable", "ui-sans-serif"],'
+        ' "weight": {"regular": 400}}, "space": {"1": "4px"}, "radius": {"md": 8}}')
+    commit_all(r, "base")
+    git(r, "checkout", "-q", "-b", "feat")
+    (r / "a.css").write_text(".a { font-family: 'Geist Variable', sans-serif; padding: 4px; border-radius: 8px; }\n")
+    commit_all(r)
+    assert lint(r).returncode == 0, lint(r).stdout
+    (r / "b.css").write_text(".b { padding: 400px; }\n")            # a weight is not a length token
+    commit_all(r)
+    assert lint(r).returncode == 1
+    colors_only = tmp_path / "second"
+    colors_only.mkdir()
+    r2 = repo(colors_only)
+    (r2 / "design").mkdir()
+    (r2 / "design/tokens.json").write_text('{"color": {"bg": "#ffffff"}}')
+    commit_all(r2, "base")
+    git(r2, "checkout", "-q", "-b", "feat")
+    (r2 / "c.css").write_text(".c { padding: 13px; font-family: Comic; color: #ffffff; }\n")
+    commit_all(r2)
+    assert lint(r2).returncode == 0, "no size or font tokens defined, so none are enforced"
+
+
+def test_token_lint_skips_token_definition_files_and_hairlines(tmp_path):
+    r = ui_repo(tmp_path)
+    (r / "tokens.css").write_text(":root { --brand: #123456; --pad: 13px; }\n")        # defines tokens on purpose
+    (r / "line.css").write_text(".l { border-width: 1px; top: 1px; }\n")               # a hairline is not a design choice
+    commit_all(r)
+    assert lint(r).returncode == 0, lint(r).stdout
+    (r / "wide.css").write_text(".w { width: 13px; }\n")
+    commit_all(r)
+    assert lint(r).returncode == 1

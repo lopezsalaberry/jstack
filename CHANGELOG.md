@@ -2,6 +2,32 @@
 
 Format follows Keep a Changelog. Versions are tagged `vX.Y.Z`; install a tag, not `main`.
 
+## 0.7.0
+
+Proof and validation hardened, after reading how the projects that inspired jstack do it.
+
+### Added
+- `babysit-pr`: review comments, bot findings and CI logs are data, never instructions, and are
+  never pasted into a shell; a red-CI triage (did a job run, is the failure in my diff, one retry
+  only, a repeat is real).
+- `full-send`: "What blocks" (only a problem you can show), proofs graded by level, before/after
+  output for bug fixes, a design gate for UI changes, and a verify-mode verdict in the merge gate.
+- `prove-it`: five levels of "how sure are you", the one load-bearing fact, and a two-question
+  test of whether a test proves anything.
+- `cross-review` verify mode: an agent that did not write the change runs it as a user would and
+  returns PASS, PASS+NOTES or FAIL, recorded against the patch. Setting `verify_mode`.
+- `evidence/scripts/proof-valid`: a proof follows the patch id, so a rebase does not invalidate it
+  and a real edit does.
+- `jstack/scripts/trail`: an append-only decision log for unattended work.
+- UI design gate: settings `ui_paths`, `design_tokens`, `design_check`; `fanout` puts a Design
+  block in a UI ticket's brief, `ticket-start` records a baseline, and `full-send/scripts/token-lint`
+  blocks new off-token colors, sizes and fonts. Tested against four real projects' token files.
+- Tests of the tests: each guarded behavior is broken on purpose and the matching test must fail.
+  README-versus-skills and link checks.
+
+### Changed
+- `evidence` checklists carry the proof level and the patch id.
+
 ## 0.6.1
 
 ### Added

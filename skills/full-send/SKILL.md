@@ -48,8 +48,9 @@ one appears.
 2. **Prove it.** Get proof for every change you made. See "Proof".
    Open the app through the repo's `verify-<app>`, test what the ticket asks,
    and leave a pass/fail checklist (`evidence`).
-3. **Get feedback.** Use `cross-review` (1 round) only when the change touches a
-   high-risk area listed in `cross-review`. Otherwise skip cross-model review.
+3. **Get feedback.** Use `cross-review` in break mode (1 round) when the change touches a
+   high-risk area listed there, and in verify mode when the change is user-visible and the
+   `verify_mode` setting is not `off`. Otherwise skip cross-model review.
 4. **File the PR** with the `file-pr` skill against the integration branch.
    Rebase onto the latest integration branch first. Paste the `evidence` checklist
    summary into the description, FAIL lines included.
@@ -89,9 +90,21 @@ reproduction, a screenshot. Use the most direct proof the change allows:
   prove it on the artifact being delivered, the way a user gets it, not on a
   dev build. Use the project's `verify-<app>` skill
   (made with `create-verify`) and keep the evidence. No evidence, no publish.
+- For a UI change (it touches `ui_paths`), the design gate is blocking. Run the `design_check`
+  setting, or the shipped `scripts/token-lint` when it is empty: no new off-token color, size or
+  font may land. Then capture a screenshot of every changed screen at the sizes the app supports
+  and compare it with the design source, listing each mismatch. A tool can prove the tokens; it
+  cannot prove a screen looks like the design, so an unresolved mismatch is `BLOCKED(decision)`
+  with the screenshot beside the design, never a merge. Anything the design does not show (a new
+  state or component) goes back to the design system first.
 - For UI and runtime behavior, run the app and look at the change. Green mocked
   tests do not prove that the user experience works. Attach screenshots to the
   PR when they help and you have a way to upload them.
+
+Grade each proof by the levels in `prove-it` ("How sure are you") and write the level next
+to every `PASS`. Levels 1 to 3 are "unproven", not a pass. For a bug fix, keep the failing
+output from before the fix and the passing output from after it, both verbatim, and commit the
+failing test before the fix when the repo has a cheap test path for it.
 
 When you cannot find a way to prove a change, you do not have full confidence.
 Ask the user.
@@ -100,7 +113,11 @@ Ask the user.
 
 Full confidence means all of these are true on the latest commit:
 
-- Your proof covers every change in the diff.
+- Your proof covers every change in the diff, and `evidence/scripts/proof-valid` confirms it
+  still describes the patch that will land (a rebase changes the commit, not the patch).
+- A UI change has a clean design check and its screenshots attached.
+- A user-visible change also has a verify-mode verdict of `PASS` or `PASS+NOTES` that covers
+  this patch, unless `verify_mode` is `off`.
 - The per-ticket gate (tests, lint, build for the touched scope, and the
   repo's required CI checks) is green.
 - Review bots have finished, and each finding is fixed or dismissed with a
@@ -108,6 +125,14 @@ Full confidence means all of these are true on the latest commit:
 - No human review still requests changes.
 - The branch is up to date with the integration branch, and GitHub reports it as
   mergeable.
+
+### What blocks
+
+Block a merge only for a problem you can show: a failing run at the head, a bug a user would
+hit, a failed required gate, or documentation this PR made wrong. A problem the base already had
+does not block unless the PR copies it or newly reaches it. Everything else (style, naming,
+speculative edge cases, "might help") goes to a follow-up list with a written reason. A finding
+nobody can reproduce is dropped, not queued.
 
 Merge with the method the repo uses. Check the allowed methods and recent merged
 PRs. If the repo uses a merge queue or auto-merge, stay until GitHub reports the

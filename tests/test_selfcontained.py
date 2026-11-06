@@ -72,3 +72,18 @@ def test_the_shipped_template_parses_with_the_shipped_reader(tmp_path):
     (repo / "AGENTS.md").write_text((ROOT / "templates/AGENTS.md").read_text())
     values = settings.resolve(repo, env={})
     assert values["integration_branch"] == "main" and values["models"] == ""
+
+
+def test_the_readme_lists_exactly_the_skills_that_ship():
+    readme = (ROOT / "README.md").read_text()
+    table = set(re.findall(r"^\| `([a-z][a-z0-9-]*)` \|", readme, re.M))
+    shipped = {p.parent.name for p in SKILLS}
+    assert table == shipped, f"README skill table out of sync: missing {sorted(shipped - table)}, extra {sorted(table - shipped)}"
+
+
+def test_every_relative_link_in_the_docs_resolves():
+    for path in [ROOT / "README.md", *ROOT.glob("docs/*.md"), ROOT / "CONTRIBUTING.md", ROOT / "SECURITY.md"]:
+        for target in re.findall(r"\]\(([^)#\s]+)(?:#[^)]*)?\)", path.read_text()):
+            if re.match(r"^[a-z]+:", target):
+                continue
+            assert (path.parent / target).exists(), f"{path.relative_to(ROOT)} links to {target}, which does not exist"

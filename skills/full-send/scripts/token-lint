@@ -1,0 +1,250 @@
+#!/usr/bin/env python3
+"""token-lint: block UI changes that use a color, size or font the design system does not define.
+
+  token-lint [--tokens FILE] [--paths GLOBS] [--base REF] [--allow FILE]
+
+Reads the design tokens (JSON; nested groups, leaves either plain values or {"$value": ...} /
+{"value": ...}) and looks only at the lines this change ADDS over BASE (committed, staged, unstaged
+and untracked files), in files that match --paths. A line is a violation when it writes a literal
+that is not a token value:
+
+  color    #rgb #rrggbb #rrggbbaa, rgb()/rgba()/hsl()/hsla()
+  size     a px/rem/em value in a spacing, size, radius or font-size declaration
+  font     the first family of a font-family declaration
+
+Token-definition files (`tokens.*`, `*.tokens.*`, `design-tokens.*`, or --skip) are not checked, and
+a 1px hairline is never a violation. Existing violations in lines the change did not add never block. Each violation prints the file, line,
+literal and, for colors, the nearest token. Exceptions live in the allow file, one per line:
+`<path glob> <literal>  # <reason>`; an entry without a reason is an error.
+
+This checks tokens in CSS-like text and component markup. Fidelity to the design (layout, spacing
+rhythm, states) is checked by the project's own `design_check` / verify lane, not here.
+Exit 0 clean, 1 violations, 2 usage error.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+# Files that DEFINE tokens as CSS variables legitimately hold the literals.
+DEFAULT_SKIP = "**/tokens.*,**/*.tokens.*,**/design-tokens.*"
+DEFAULT_PATHS = "**/*.css,**/*.scss,**/*.sass,**/*.less,**/*.tsx,**/*.jsx,**/*.vue,**/*.svelte,**/*.html"
+HEX = re.compile(r"#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})\b")
+FUNC_COLOR = re.compile(r"\b(?:rgba?|hsla?)\([^)]*\)", re.I)
+SIZE_DECL = re.compile(r"\b((?:margin|padding|gap|row-gap|column-gap|top|right|bottom|left|width|height|min-width|"
+                       r"max-width|min-height|max-height|font-size|line-height|border-radius|border-width|"
+                       r"letter-spacing)[\w-]*)\s*:\s*([^;{}]+)", re.I)
+LENGTH = re.compile(r"(?<![\w.#-])(-?\d*\.?\d+)(px|rem|em)\b")
+FONT_DECL = re.compile(r"\bfont-family\s*:\s*([^;{}]+)", re.I)
+GENERIC_FONTS = {"inherit", "initial", "unset", "serif", "sans-serif", "monospace", "system-ui", "cursive", "fantasy"}
+
+
+def glob_re(glob: str) -> re.Pattern:
+    out, i = "", 0
+    while i < len(glob):
+        if glob[i:i + 3] == "**/":
+            out, i = out + "(?:.*/)?", i + 3
+        elif glob[i:i + 2] == "**":
+            out, i = out + ".*", i + 2
+        elif glob[i] == "*":
+            out, i = out + "[^/]*", i + 1
+        elif glob[i] == "?":
+            out, i = out + "[^/]", i + 1
+        else:
+            out, i = out + re.escape(glob[i]), i + 1
+    return re.compile("^" + out + "$")
+
+
+def norm_hex(text: str) -> str:
+    h = text.lower().lstrip("#")
+    if len(h) in (3, 4):
+        h = "".join(c * 2 for c in h)
+    return "#" + h
+
+
+def norm_func(text: str) -> str:
+    return re.sub(r"\s+", "", text.lower())
+
+
+def flatten(node, path=()):
+    if isinstance(node, dict):
+        for key in ("$value", "value"):
+            if key in node and not isinstance(node[key], dict):
+                yield ".".join(path), node[key]
+                return
+        for key, child in node.items():
+            if not key.startswith("$"):
+                yield from flatten(child, (*path, key))
+    elif isinstance(node, (str, int, float, list)):
+        yield ".".join(path), node
+
+
+SIZE_WORDS = ("space", "spacing", "size", "radius", "gap", "width", "height", "padding", "margin", "layout")
+NOT_SIZE_WORDS = ("weight", "line", "opacity", "z", "duration", "ratio", "count")
+
+
+def load_tokens(path: Path):
+    """Collect the literal values the design system allows: colors, lengths, font families.
+    Real token files differ, so a number counts as a length only under a size-like name (not a font
+    weight), and a font family is read from a `font`/`family` token, whether a string or a list."""
+    colors, lengths, fonts = {}, {}, {}
+    for name, value in flatten(json.loads(path.read_text())):
+        words = re.split(r"[.\-_/ ]", name.lower())
+        items = value if isinstance(value, list) else [value]
+        if isinstance(value, list) and any(w in ("font", "family", "fonts") for w in words):
+            first = str(items[0]).strip().strip("'\"").lower() if items else ""
+            if first:
+                fonts[first] = name
+            continue
+        for item in items:
+            text = str(item).strip()
+            if HEX.fullmatch(text):
+                colors[norm_hex(text)] = name
+            elif FUNC_COLOR.fullmatch(text):
+                colors[norm_func(text)] = name
+            elif re.fullmatch(r"-?\d*\.?\d+(px|rem|em)", text):
+                lengths[text.lower()] = name
+            elif (isinstance(item, (int, float)) and not isinstance(item, bool)
+                  and any(w in words for w in SIZE_WORDS) and not any(w in words for w in NOT_SIZE_WORDS)):
+                lengths[f"{item:g}px"] = name
+            elif (isinstance(item, str) and re.search(r"[A-Za-z]", text) and not text.startswith(("{", "$"))
+                  and any(w in ("font", "family", "fonts") for w in words)
+                  and not any(w in words for w in ("size", "weight", "line", "height", "style"))):
+                fonts[text.split(",")[0].strip().strip("'\"").lower()] = name
+    return colors, lengths, fonts
+
+
+def rgb(h: str):
+    h = h.lstrip("#")
+    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def nearest(color: str, colors: dict):
+    if not color.startswith("#") or len(color) < 7:
+        return None
+    pool = [(sum((a - b) ** 2 for a, b in zip(rgb(color), rgb(c))), c, n) for c, n in colors.items() if c.startswith("#")]
+    return min(pool)[1:] if pool else None
+
+
+def git(*args: str) -> str:
+    proc = subprocess.run(["git", *args], capture_output=True, text=True)
+    if proc.returncode != 0:
+        print(f"token-lint: git {' '.join(args[:2])} failed: {proc.stderr.strip()}", file=sys.stderr)
+        sys.exit(2)
+    return proc.stdout
+
+
+def default_base() -> str:
+    proc = subprocess.run(["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"], capture_output=True, text=True)
+    if proc.returncode == 0 and proc.stdout.strip():
+        return proc.stdout.strip()
+    for candidate in ("origin/main", "main", "master"):
+        if subprocess.run(["git", "rev-parse", "--verify", "-q", candidate], capture_output=True).returncode == 0:
+            return candidate
+    print("token-lint: cannot find a base branch; pass --base", file=sys.stderr)
+    sys.exit(2)
+
+
+def added_lines(base: str):
+    """Yield (path, line number, text) for every line the change adds over base."""
+    fork = git("merge-base", base, "HEAD").strip()
+    path, number = None, 0
+    for row in git("diff", "-U0", "--no-color", fork).splitlines():
+        if row.startswith("+++ "):
+            path = row[6:] if row.startswith("+++ b/") else None
+        elif row.startswith("@@"):
+            number = int(re.search(r"\+(\d+)", row).group(1)) - 1
+        elif row.startswith("+") and path:
+            number += 1
+            yield path, number, row[1:]
+    for path in git("ls-files", "--others", "--exclude-standard").splitlines():
+        try:
+            for number, text in enumerate(Path(path).read_text().splitlines(), 1):
+                yield path, number, text
+        except (UnicodeDecodeError, OSError):
+            continue
+
+
+def load_allow(path: Path):
+    entries = []
+    if not path.is_file():
+        return entries
+    for number, raw in enumerate(path.read_text().splitlines(), 1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        body, _, reason = line.partition("#")
+        parts = body.split(None, 1)
+        if len(parts) != 2 or not reason.strip():
+            print(f"token-lint: {path}:{number}: expected `<path glob> <literal>  # <reason>` with a reason", file=sys.stderr)
+            sys.exit(2)
+        entries.append((glob_re(parts[0]), parts[1].strip().lower()))
+    return entries
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--tokens", default="design/tokens.json")
+    ap.add_argument("--paths", default="")
+    ap.add_argument("--base")
+    ap.add_argument("--allow", default="design/token-allow.txt")
+    ap.add_argument("--skip", default=DEFAULT_SKIP, help="globs of token-definition files that hold literals on purpose")
+    args = ap.parse_args()
+    tokens = Path(args.tokens)
+    if not tokens.is_file():
+        print(f"token-lint: {tokens} not found. A UI change needs its design tokens first.", file=sys.stderr)
+        sys.exit(2)
+    try:
+        colors, lengths, fonts = load_tokens(tokens)
+    except (ValueError, OSError) as error:
+        print(f"token-lint: cannot read {tokens}: {error}", file=sys.stderr)
+        sys.exit(2)
+    globs = [glob_re(g.strip()) for g in (args.paths or DEFAULT_PATHS).split(",") if g.strip()]
+    allow = load_allow(Path(args.allow))
+    skip_globs = [glob_re(g.strip()) for g in args.skip.split(",") if g.strip()]
+    skip = {tokens.as_posix(), Path(args.allow).as_posix()}
+    found = 0
+
+    def report(path, number, literal, kind, hint=""):
+        nonlocal found
+        if any(rx.match(path) and literal.lower() == lit for rx, lit in allow):
+            return
+        found += 1
+        print(f"{path}:{number}: {kind} `{literal}` is not a design token{hint}")
+
+    for path, number, text in added_lines(args.base or default_base()):
+        if (path in skip or not any(g.match(path) for g in globs) or any(g.match(path) for g in skip_globs)
+                or re.search(r"(^|/)(node_modules|dist|build)/", path)):
+            continue
+        stripped = text.strip()
+        if stripped.startswith(("//", "/*", "*")):
+            continue
+        for m in HEX.finditer(text):
+            lit = norm_hex(m.group(0))
+            if lit not in colors:
+                near = nearest(lit, colors)
+                report(path, number, m.group(0), "color", f" (nearest: {near[1]} = {near[0]})" if near else "")
+        for m in FUNC_COLOR.finditer(text):
+            if norm_func(m.group(0)) not in colors:
+                report(path, number, m.group(0), "color")
+        for decl in SIZE_DECL.finditer(text if lengths else ""):  # a system without size tokens enforces none
+            for m in LENGTH.finditer(decl.group(2)):
+                lit = f"{float(m.group(1)):g}{m.group(2).lower()}"
+                if float(m.group(1)) != 0 and lit != "1px" and lit not in lengths:
+                    report(path, number, m.group(0), "size", f" (in `{decl.group(1)}`)")
+        for decl in FONT_DECL.finditer(text if fonts else ""):
+            family = decl.group(1).split(",")[0].strip().strip("'\"").lower()
+            if family and family not in GENERIC_FONTS and not family.startswith("var(") and family not in fonts:
+                report(path, number, family, "font")
+    if found:
+        print(f"token-lint: {found} violation(s). Use a token, or extend the design system first.", file=sys.stderr)
+        sys.exit(1)
+    print("token-lint: no new off-token literals")
+
+
+if __name__ == "__main__":
+    main()

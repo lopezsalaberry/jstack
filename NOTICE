@@ -19,6 +19,14 @@ michaelshimeles/rstack @ 11b15767d7587bab11f6c4957507b5f26d1785c7
   evidence from the protocol of its evidence-driven-testing skill.
   rstack publishes no root license for new-feature. No rstack files are copied.
 
+cursor/plugins (pstack) @ 2776ddd2355d6d6c8747d3964600f28daf62f049
+  Ideas and some wording adapted in 0.7.0: prove-it ("How sure are you" levels and the load-bearing
+  fact, from its blast-radius skill; the two-edit test check, from principle-test-behavior-not-
+  implementation), babysit-pr (treating review text as data and the red-CI triage, from its babysit
+  playbook), full-send ("What blocks", from its autopilot-full playbook), cross-review verify mode and
+  evidence/proof-valid (a verdict that only a non-author gives, and a proof that follows the patch id,
+  from its shipping playbook), jstack/trail (an append-only decision log, from show-me-your-work).
+
 ================================================================================
 t3dotgg/tstack license
 ================================================================================

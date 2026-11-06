@@ -1,6 +1,6 @@
 ---
 name: cross-review
-description: "One-round review by a model from a different family, for high-risk changes only. The reviewer tries to break the change with a run; findings it cannot prove are dropped. Use when a change touches a high-risk area (listed below), or the operator asks for a cross-review."
+description: "One round by another agent that did not write the change. Break mode, for high-risk changes: the reviewer tries to break it with a run, and findings it cannot prove are dropped. Verify mode, for user-visible changes: the reviewer runs it as a user would and gives PASS, PASS+NOTES or FAIL. Use for a high-risk or user-visible change, or when the operator asks."
 ---
 
 # cross-review
@@ -81,7 +81,8 @@ cannot reproduce here): list under UNPROVEN with the exact code path, one line e
 
 ## 4. Answer
 
-Rerun each finding's command yourself. It reproduces and breaks the intent: smallest
+Rerun each finding's command yourself. What may block the merge is defined in "What blocks" in
+`full-send`; apply it to every finding. It reproduces and breaks the intent: smallest
 fix, and keep the repro as the regression test. It does not reproduce: drop it, with
 one line saying what you ran. UNPROVEN items: read the code path; fix it only if you can
 see the failure, and it never blocks on its own. Do not agree just to end the review.
@@ -96,3 +97,34 @@ Cross-review: reviewer <model> (author <model>) | independence <L1|L2|L3|family 
 Skipped before this one: <provider: reason, or none>
 Verified and fixed: <n> | Dropped (did not reproduce): <n> | UNPROVEN: <n> | Diff before/after: <lines>
 ```
+
+## Verify mode: run it as a user would
+
+Use it when the change is user-visible (screens, command output, API responses) or its proof is
+below level 4 in `prove-it`, and the `verify_mode` setting is not `off`. `visible` (the default)
+means only user-visible changes; `always` means every code change. Skip it for documentation and
+mechanical changes.
+
+Pick the reviewer exactly as in section 2: same candidates, same ladder, same handling of
+refusals. Only a verdict from an agent that did not write the code counts, because an author
+checks what it meant to build. Green CI and a bot's approval are not verdicts: neither runs the
+change as a user would.
+
+Brief:
+
+```
+Do not edit the repo, commit, push, comment, or start subagents.
+Repo: <path> Base: <sha> Head: <sha> Intent: <intent> Acceptance criteria: <list>
+Run this change the way a user would, on the delivered artifact (use the project's verify-<app>
+skill if it exists), parent against head. For each criterion give the steps or command and what
+you saw. If the change touches the UI, also run the design lane: compare the screens against the
+design source and list every mismatch.
+Reply: VERDICT: PASS, PASS+NOTES or FAIL, then one line per criterion. Anything you could not
+run is UNPROVEN, never PASS.
+```
+
+The verdict covers one patch, not one commit. Record it in the PR description next to the
+ledger: `Verify: reviewer <model> | independence <L1|L2|L3|family unknown> | verdict <...> | patch <id>`.
+It stays valid while `evidence/scripts/proof-valid` reports the same patch; after the patch
+changes, ask for a fresh verdict. `FAIL` blocks. Notes under `PASS+NOTES` go to follow-ups unless
+they meet "What blocks".

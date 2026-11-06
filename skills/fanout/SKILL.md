@@ -48,6 +48,13 @@ integration branch, the per-ticket gate (tests, lint, build, required CI), and t
   `full-send`. When you would ask, stop and report `BLOCKED` with evidence.**
 - If the repo has no `verify-<app>` skill or no GitHub remote, report `BLOCKED`
   before editing.
+- **A UI ticket carries a Design block.** When the ticket's `Touches` match `ui_paths` (see
+  `jstack`), the brief names the design sources (the `design_tokens` file and wherever the
+  project keeps components and screens), says to read them before editing and to use only the
+  tokens and components they define, and adds to its done-when: the design check is clean and
+  every changed screen has a screenshot. If the design system lacks what the ticket needs, the
+  worker reports `BLOCKED(decision)` naming the missing piece. Extending the design system is its
+  own ticket and goes first.
 - Do not fan out. Iterate with the `iterate` skill: there is no attempt cap. Stop only by its stop rules.
 - A budget (quota, rate, time, context) is not a block: write `RUNSTATE.md`, push the WIP commit and report `WAITING` with an observable resume condition.
 - `BLOCKED(decision)` is the question you would have asked, with the options and your recommendation first.

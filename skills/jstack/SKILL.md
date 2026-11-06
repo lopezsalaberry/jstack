@@ -29,6 +29,10 @@ Precedence: environment `JSTACK_<KEY>` over `AGENTS.md` over the default.
 | `max_parallel` | empty | Optional cap on workers at once. Empty: limited by quota only |
 | `review_bots` | empty | Comma list of review-bot logins whose review `babysit-pr` waits for. Empty: none |
 | `advisory_bots` | empty | Review bots that are reported but never waited for |
+| `verify_mode` | `visible` | When `cross-review` runs in verify mode: `off`, `visible` (user-visible changes only) or `always` |
+| `ui_paths` | empty | Comma list of globs (for example `src/ui/**, **/*.css`) that mark a change as UI. Empty: the design gate is off |
+| `design_tokens` | `design/tokens.json` | The design system's tokens, the source `token-lint` checks against |
+| `design_check` | empty | Command that must exit 0 on a UI change, run from the repo root. Empty: the shipped `full-send/scripts/token-lint` with `design_tokens` and `ui_paths`. Set it to also run your design file's own lint or a visual comparison |
 | `posthoc_queue` | empty | File where `cross-review` queues unproven findings. Empty: put them in the PR |
 | `paid_fallback` | `off` | `off`, or `<provider> <daily cap>` to allow pay-per-token work after subscriptions run out |
 
@@ -70,3 +74,8 @@ Next step: <one sentence>
 
 Below the header: what was tried (hypothesis, change, verdict), what is known, and the
 premises tested.
+
+For work nobody is watching, also keep `TRAIL.tsv` next to it: one append-only row per decision
+(`scripts/trail TRAIL.tsv <phase> <decision> <why> <evidence> <result>`). Evidence is a pointer
+(SHA, PR, `file:line`, artifact path). A wrong call is superseded by a new row, never edited.
+`scripts/trail --check` validates the file.

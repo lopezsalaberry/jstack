@@ -15,6 +15,8 @@ integration_branch: main
 models:
 reviewer_models:
 review_bots:
+ui_paths:
+design_tokens: design/tokens.json
 ```
 
 ## Principles

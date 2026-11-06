@@ -12,6 +12,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -21,7 +22,7 @@ DEFAULTS = {
     "integration_branch": None,  # derived from the remote
     "models": "",
     "reviewer_models": "auto",
-    "quota_probe": str(SKILLS / "quota-gate" / "scripts" / "quota-probe"),
+    "quota_probe": shlex.quote(str(SKILLS / "quota-gate" / "scripts" / "quota-probe")),  # a path may hold spaces
     "quota_source": ".jstack/quota.txt",
     "quota_max_age_minutes": "30",
     "iteration_minutes": "60",

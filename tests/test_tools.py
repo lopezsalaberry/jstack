@@ -412,3 +412,25 @@ def test_a_proof_whose_change_already_landed_still_stands(tmp_path):
     other = tmp_path / "o.md"                                          # a proof whose revision is not in main is still stale
     other.write_text("Revision: " + "0" * 40 + "\nPatch-id: deadbeef\n")
     assert run([PROOFVALID, "--checklist", other, "--base", "main"], cwd=r).returncode == 1
+
+
+def test_the_stack_works_from_a_path_with_spaces(tmp_path):
+    """Found on a machine whose checkout lives on an external disk named 'Crucial X9'."""
+    import shutil as _shutil
+    spaced = tmp_path / "Crucial X9" / "base"
+    _shutil.copytree(ROOT / "skills", spaced / "skills", ignore=_shutil.ignore_patterns("__pycache__"))
+    r = repo(tmp_path)
+    probe = run([spaced / "skills/jstack/scripts/jstack-settings", "--repo", r, "quota_probe"], cwd=tmp_path).stdout.strip()
+    import shlex as _shlex
+    assert _shlex.split(probe)[0].endswith("Crucial X9/base/skills/quota-gate/scripts/quota-probe"), probe
+    done = run([spaced / "skills/jstack/scripts/doctor", "--repo", r], cwd=tmp_path, env={"PATH": str(tools_dir(tmp_path, True))})
+    assert "Traceback" not in done.stderr, done.stderr
+    assert "ok   quota_probe runs" in done.stdout, done.stdout
+    assert done.returncode == 0, done.stdout
+
+
+def test_a_probe_that_cannot_run_is_reported_not_a_crash(tmp_path):
+    r = repo(tmp_path)
+    (r / "AGENTS.md").write_text("# P\n\n## jstack settings\nquota_probe: /no/such/dir/probe\n")
+    done = run([DOCTOR, "--repo", r], cwd=tmp_path, env={"PATH": str(tools_dir(tmp_path, True))})
+    assert "Traceback" not in done.stderr and "FAIL quota_probe command" in done.stdout and done.returncode == 1

@@ -2,6 +2,17 @@
 
 Format follows Keep a Changelog. Versions are tagged `vX.Y.Z`; install a tag, not `main`.
 
+## 0.7.4
+
+### Fixed
+- A checkout path with a space (an external disk called "Crucial X9") broke the default `quota_probe`
+  command and made `doctor` crash. The default is now shell-quoted, `doctor` splits commands the way a
+  shell does, and a probe that cannot run is reported as a failed check instead of a traceback. Found by
+  running the doctor on the Mac mini.
+
+### Changed
+- `doctor` also checks `~/.codex/skills`. Found because that folder was still on the old install.
+
 ## 0.7.3
 
 ### Changed

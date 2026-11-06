@@ -9,6 +9,7 @@ Exit 1 when a FAIL line was printed.
 from __future__ import annotations
 
 import argparse
+import shlex
 import shutil
 import subprocess
 import sys
@@ -56,21 +57,25 @@ def main() -> None:
         configured = settings.block(repo / "AGENTS.md")
         say("ok" if configured else "warn", "jstack settings in AGENTS.md",
             "" if configured else "none found; defaults apply. Add a `## jstack settings` block (see the `jstack` skill)")
-        probe = values["quota_probe"]
-        if not Path(probe).exists() and not shutil.which(probe.split()[0]):
-            say("FAIL", "quota_probe command", f"{probe!r} not found")
+        probe = shlex.split(values["quota_probe"])
+        if not probe or (not Path(probe[0]).exists() and not shutil.which(probe[0])):
+            say("FAIL", "quota_probe command", f"{values['quota_probe']!r} not found")
         else:
-            result = run([*probe.split(), "--provider", "doctor-check"])
-            ok = result.returncode in (0, 1, 2)
-            say("ok" if ok else "FAIL", "quota_probe runs", f"exit {result.returncode}; exit 2 means no data, which is not a block")
+            try:
+                result = run([*probe, "--provider", "doctor-check"])
+            except OSError as error:  # a check must report a problem, never crash on it
+                say("FAIL", "quota_probe runs", f"cannot execute it: {error}")
+            else:
+                ok = result.returncode in (0, 1, 2)
+                say("ok" if ok else "FAIL", "quota_probe runs", f"exit {result.returncode}; exit 2 means no data, which is not a block")
 
     names = sorted(p.name for p in SKILLS.iterdir() if (p / "SKILL.md").exists())
-    for target in (Path.home() / ".claude" / "skills", Path.home() / ".agents" / "skills"):
+    for target in (Path.home() / ".claude" / "skills", Path.home() / ".agents" / "skills", Path.home() / ".codex" / "skills"):
         if not target.exists():
             continue
         missing = [n for n in names if not (target / n / "SKILL.md").exists()]
         say("ok" if not missing else "warn", f"skills linked in {target}",
-            "" if not missing else f"missing: {', '.join(missing)}; run ./install.sh")
+            "" if not missing else f"missing: {', '.join(missing)}; run ./install.sh (add --target for a folder it does not link by default)")
 
     for level, name, detail in lines:
         print(f"{level:4} {name}" + (f": {detail}" if detail else ""))

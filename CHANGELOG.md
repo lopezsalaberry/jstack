@@ -2,6 +2,13 @@
 
 Format follows Keep a Changelog. Versions are tagged `vX.Y.Z`; install a tag, not `main`.
 
+## 0.7.3
+
+### Changed
+- `proof-valid` recognises a proof whose change has already been integrated into the base ("landed")
+  instead of reporting that the patch changed. Found in a scenario run: after a ticket merged, the
+  patch against the base is empty, and the tool told the agent to prove it again.
+
 ## 0.7.2
 
 ### Changed

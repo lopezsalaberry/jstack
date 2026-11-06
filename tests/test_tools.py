@@ -396,3 +396,19 @@ def test_checklist_init_starts_a_proof_that_proof_valid_accepts(tmp_path):
     (r / "a.txt").write_text("2\n")
     commit_all(r)
     assert run([PROOFVALID, "--checklist", r / ".artifacts/T-9/checklist.md", "--base", "main"], cwd=r).returncode == 1
+
+
+def test_a_proof_whose_change_already_landed_still_stands(tmp_path):
+    r = repo(tmp_path)
+    git(r, "checkout", "-q", "-b", "feat")
+    (r / "a.txt").write_text("1\n")
+    commit_all(r)
+    checklist = tmp_path / "c.md"
+    checklist.write_text(run([PROOFVALID, "--print", "--base", "main"], cwd=r).stdout)
+    git(r, "checkout", "-q", "main")
+    git(r, "merge", "-q", "--ff-only", "feat")                       # the ticket was integrated
+    done = run([PROOFVALID, "--checklist", checklist, "--base", "main"], cwd=r)
+    assert done.returncode == 0 and "landed" in done.stdout, done.stdout
+    other = tmp_path / "o.md"                                          # a proof whose revision is not in main is still stale
+    other.write_text("Revision: " + "0" * 40 + "\nPatch-id: deadbeef\n")
+    assert run([PROOFVALID, "--checklist", other, "--base", "main"], cwd=r).returncode == 1

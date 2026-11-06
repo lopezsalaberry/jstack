@@ -15,7 +15,10 @@ with the one recorded when the proof was made.
 --patch-id     compare a given id with HEAD
 
 BASE defaults to the remote's default branch (origin/HEAD), then origin/main, main, master.
-Exit 0 same patch, 1 the patch changed (print both ids), 2 usage error or no way to compute.
+A proof whose revision is already part of BASE has landed: the change is no longer a patch over BASE,
+so there is nothing left to compare and the proof stands. (A squash merge rewrites the commit, so a
+squashed change is not recognised this way; compare before merging.)
+Exit 0 same patch or already landed, 1 the patch changed (print both ids), 2 usage error or no way to compute.
 """
 from __future__ import annotations
 
@@ -79,6 +82,11 @@ def main() -> None:
             print(f"proof-valid: no `Patch-id:` line in {args.checklist}; the proof cannot be tied to a patch", file=sys.stderr)
             sys.exit(2)
         recorded = match.group(1)
+        revision = re.search(r"^Revision:\s*([0-9a-f]{7,40})", text, re.M)
+        if revision and recorded != now and subprocess.run(
+                ["git", "merge-base", "--is-ancestor", revision.group(1), base], capture_output=True).returncode == 0:
+            print(f"proof-valid: landed; the proof's revision {revision.group(1)[:7]} is already in {base}")
+            return
     else:
         recorded = args.recorded
     if recorded == now:

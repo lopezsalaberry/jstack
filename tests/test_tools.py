@@ -434,3 +434,22 @@ def test_a_probe_that_cannot_run_is_reported_not_a_crash(tmp_path):
     (r / "AGENTS.md").write_text("# P\n\n## jstack settings\nquota_probe: /no/such/dir/probe\n")
     done = run([DOCTOR, "--repo", r], cwd=tmp_path, env={"PATH": str(tools_dir(tmp_path, True))})
     assert "Traceback" not in done.stderr and "FAIL quota_probe command" in done.stdout and done.returncode == 1
+
+
+def test_every_shipped_script_survives_deprecation_warnings_as_errors():
+    """A newer Python turns today's deprecation warning into tomorrow's crash (found on a Mac with a newer
+    Homebrew Python: the doctor used a function that no longer exists there)."""
+    scripts = [p for p in ROOT.glob("skills/*/scripts/*") if p.is_file()]
+    assert len(scripts) >= 8
+    for script in scripts:
+        done = subprocess.run([sys.executable, "-W", "error", str(script), "--help"], capture_output=True, text=True,
+                              env={"PATH": os.environ["PATH"], "HOME": str(ROOT)}, timeout=60)
+        assert "Traceback" not in done.stderr, f"{script.relative_to(ROOT)} crashes with warnings as errors:\n{done.stderr[-400:]}"
+
+
+def test_doctor_runs_under_warnings_as_errors(tmp_path):
+    r = repo(tmp_path)
+    done = subprocess.run([sys.executable, "-W", "error", str(DOCTOR), "--repo", str(r)], capture_output=True, text=True,
+                          env={"PATH": str(tools_dir(tmp_path, True)), "HOME": str(tmp_path)}, cwd=tmp_path)
+    assert "Traceback" not in done.stderr, done.stderr
+    assert "ok   quota_probe runs" in done.stdout

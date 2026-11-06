@@ -18,9 +18,12 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 SKILLS = HERE.parents[1]
 sys.path.insert(0, str(HERE))
+import importlib.util  # noqa: E402
 from importlib.machinery import SourceFileLoader  # noqa: E402
 
-settings = SourceFileLoader("jstack_settings", str(HERE / "jstack-settings")).load_module()
+_loader = SourceFileLoader("jstack_settings", str(HERE / "jstack-settings"))
+settings = importlib.util.module_from_spec(importlib.util.spec_from_loader("jstack_settings", _loader))
+_loader.exec_module(settings)  # load_module() is gone in newer Pythons
 
 
 def run(args: list[str]) -> subprocess.CompletedProcess:

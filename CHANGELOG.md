@@ -2,6 +2,13 @@
 
 Format follows Keep a Changelog. Versions are tagged `vX.Y.Z`; install a tag, not `main`.
 
+## 0.7.5
+
+### Fixed
+- `doctor` crashed on a Python new enough to have removed `load_module()` (a MacBook with a recent
+  Homebrew Python). It now loads its sibling module the supported way. A test runs every shipped script
+  with deprecation warnings as errors, so the next removal is caught here and not on a Mac.
+
 ## 0.7.4
 
 ### Fixed

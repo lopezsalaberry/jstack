@@ -53,7 +53,8 @@ If the other family has no quota (probe at 0%), do not block and do not wait:
   the repo gate (`verify-<app>`, or its tests/build) on the merged head and keep
   that output in the evidence. The one exception: the change touches a high-risk
   area above and the fallback reviewer reported UNPROVEN findings. Then append one
-  line to `~/base/state/posthoc-review.queue`:
+  line to the file named by `$JSTACK_POSTHOC_QUEUE` (if unset, put the UNPROVEN
+  items in the PR description instead):
   `<ISO date> <repo> <PR or sha> <base sha> <ticket> pending`, one line per
   ticket (not per commit). When Claude quota returns, rerun that reviewer's
   UNPROVEN items with the same brief.

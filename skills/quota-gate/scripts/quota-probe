@@ -24,6 +24,8 @@ per repo: quota belongs to the account), one line `<provider> <expires epoch> <r
 
 Default source: $JSTACK_QUOTA_SOURCE, then ./.jstack/quota.txt, then ~/.config/jstack/quota.txt.
 Default max age: $JSTACK_QUOTA_MAX_AGE_MINUTES or 30.
+
+A bad argument exits 64. In this contract exit 2 means unknown, and a usage error must never look like it.
 """
 from __future__ import annotations
 
@@ -84,8 +86,15 @@ def write_marks(marks: dict[str, tuple[float, str]]) -> None:
     path.write_text("".join(f"{p} {e:.0f} {r}\n" for p, (e, r) in sorted(marks.items())))
 
 
+class Parser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:  # argparse exits 2 here, which this contract reads as "unknown"
+        self.print_usage(sys.stderr)
+        print(f"quota-probe: {message}", file=sys.stderr)
+        sys.exit(64)
+
+
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = Parser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--source")
     ap.add_argument("--provider")
     ap.add_argument("--mark-exhausted", metavar="NAME")

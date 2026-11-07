@@ -42,9 +42,10 @@ reason a change is stuck: there is always a next candidate, and a refusal sends 
    session.
 2. **Skip what is known to be out.** Ask `quota-gate` about each candidate's provider. Exit 1 (at
    0% or marked exhausted): skip it. Exit 0 or 2: it is a candidate.
-3. **Try it.** Start the reviewer with the harness's delegate action. If it fails for quota, rate
-   limit, authentication or availability, mark the provider exhausted as `quota-gate` describes
-   and go to the next candidate immediately. Do not retry the same provider and do not wait.
+3. **Try it.** Start the reviewer with the harness's delegate action and wait at most 10 minutes for its
+   first output. If it fails for quota, rate limit, authentication or availability, or stays silent for
+   those 10 minutes (silence is a refusal, see `quota-gate`), mark the provider exhausted as `quota-gate`
+   describes and go to the next candidate immediately. Do not retry the same provider and do not wait.
 4. **Independence ladder.** Take the best level any candidate gives, and write it in the ledger:
    - **L1** a model from another family than the author's.
    - **L2** a different model from the same family.

@@ -9,10 +9,12 @@ Exit 1 when a FAIL line was printed.
 from __future__ import annotations
 
 import argparse
+import os
 import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -26,8 +28,23 @@ settings = importlib.util.module_from_spec(importlib.util.spec_from_loader("jsta
 _loader.exec_module(settings)  # load_module() is gone in newer Pythons
 
 
-def run(args: list[str]) -> subprocess.CompletedProcess:
-    return subprocess.run(args, capture_output=True, text=True)
+def run(args: list[str], env: dict | None = None) -> subprocess.CompletedProcess:
+    return subprocess.run(args, capture_output=True, text=True, env=env)
+
+
+def probe_contract(probe: list[str]) -> tuple[str, str]:
+    """Walk the quota-gate contract with a throwaway name and marks file. A usage error that exits 2 reads as
+    "unknown", so exit codes alone cannot tell a probe that says "no data" from one that did not understand us."""
+    with tempfile.TemporaryDirectory() as tmp:
+        env = {**os.environ, "JSTACK_QUOTA_MARKS": str(Path(tmp) / "marks.txt")}
+        steps = [(["--provider", "doctor-check"], (0, 1, 2)), (["--mark-exhausted", "doctor-check", "--minutes", "1"], (0,)),
+                 (["--provider", "doctor-check"], (1,)), (["--clear", "doctor-check"], (0,))]
+        for args, expected in steps:
+            result = run([*probe, *args], env=env)
+            if result.returncode not in expected or "usage:" in result.stderr.lower():
+                why = "printed a usage error" if "usage:" in result.stderr.lower() else f"exited {result.returncode}, expected {'/'.join(map(str, expected))}"
+                return "FAIL", f"`{' '.join(args)}` {why}. The probe does not speak the quota-gate contract, so every provider would look unknown and no refusal would ever be marked"
+    return "ok", "speaks the contract: --provider, --mark-exhausted, --clear; exit 2 means no data, which is not a block"
 
 
 def main() -> None:
@@ -69,8 +86,8 @@ def main() -> None:
             except OSError as error:  # a check must report a problem, never crash on it
                 say("FAIL", "quota_probe runs", f"cannot execute it: {error}")
             else:
-                ok = result.returncode in (0, 1, 2)
-                say("ok" if ok else "FAIL", "quota_probe runs", f"exit {result.returncode}; exit 2 means no data, which is not a block")
+                level, detail = probe_contract(probe)
+                say(level, "quota_probe runs", detail)
 
     names = sorted(p.name for p in SKILLS.iterdir() if (p / "SKILL.md").exists())
     for target in (Path.home() / ".claude" / "skills", Path.home() / ".agents" / "skills", Path.home() / ".codex" / "skills"):

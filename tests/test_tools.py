@@ -453,3 +453,46 @@ def test_doctor_runs_under_warnings_as_errors(tmp_path):
                           env={"PATH": str(tools_dir(tmp_path, True)), "HOME": str(tmp_path)}, cwd=tmp_path)
     assert "Traceback" not in done.stderr, done.stderr
     assert "ok   quota_probe runs" in done.stdout
+
+
+def test_quota_probe_usage_error_exits_64_never_2(tmp_path):
+    """Exit 2 means 'unknown' in the contract, and argparse's default usage error is exit 2."""
+    done = run([PROBE, "--nope"], cwd=tmp_path)
+    assert done.returncode == 64 and "usage:" in done.stderr.lower(), done.stderr
+
+
+def _fake_probe(tmp_path, body):
+    p = tmp_path / "fake-probe"
+    p.write_text(f"#!{sys.executable}\n" + body)
+    p.chmod(0o755)
+    return p
+
+
+def _doctor_with_probe(tmp_path, fake):
+    r = repo(tmp_path, f"# P\n\n## jstack settings\nquota_probe: {fake}\n")
+    return run([DOCTOR, "--repo", r], cwd=tmp_path, env={"PATH": str(tools_dir(tmp_path, True))})
+
+
+def test_doctor_fails_a_probe_that_does_not_speak_the_contract(tmp_path):
+    """2026-11-07: a probe that only knew --model answered every --provider call with an argparse usage error, exit 2,
+    which the contract reads as 'unknown'. The doctor said ok, every provider looked unknown (one account was in a quota
+    cooldown) and no refusal was ever marked, so a review kept going to the exhausted provider."""
+    fake = _fake_probe(tmp_path, "import argparse\nap = argparse.ArgumentParser()\nap.add_argument('--model')\nap.parse_args()\n")
+    done = _doctor_with_probe(tmp_path, fake)
+    assert "FAIL quota_probe runs" in done.stdout and "usage error" in done.stdout and done.returncode == 1, done.stdout
+
+
+def test_doctor_fails_a_probe_that_answers_provider_but_cannot_mark(tmp_path):
+    fake = _fake_probe(tmp_path, "import sys\nif sys.argv[1:2] == ['--provider']:\n    sys.exit(2)\nsys.stderr.write('usage: fake [--provider NAME]\\n')\nsys.exit(2)\n")
+    done = _doctor_with_probe(tmp_path, fake)
+    assert "FAIL quota_probe runs" in done.stdout and "--mark-exhausted" in done.stdout and done.returncode == 1, done.stdout
+
+
+def test_doctor_leaves_the_real_marks_file_alone(tmp_path):
+    """The contract walk uses a throwaway marks file and a throwaway provider name."""
+    marks = tmp_path / "real-marks.txt"
+    marks.write_text("claude 4102444800 keep me\n")
+    r = repo(tmp_path)
+    done = run([DOCTOR, "--repo", r], cwd=tmp_path, env={"JSTACK_QUOTA_MARKS": str(marks)})
+    assert "ok   quota_probe runs" in done.stdout, done.stdout
+    assert marks.read_text() == "claude 4102444800 keep me\n"

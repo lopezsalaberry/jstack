@@ -2,6 +2,20 @@
 
 Format follows Keep a Changelog. Versions are tagged `vX.Y.Z`; install a tag, not `main`.
 
+## 0.8.2
+
+### Fixed
+- A probe that does not understand the contract looked exactly like a probe with no data. `argparse` exits 2 on a
+  bad argument and 2 means "unknown" in `quota-gate`, so a probe that only knew its own flags answered every
+  `--provider` call with exit 2: every provider looked unknown, and `--mark-exhausted` never wrote the mark that stops
+  other workers from retrying a provider that just refused. `doctor` saw exit 2 and said ok. Found when a review on an
+  account in a quota cooldown sat silent for seven hours. The shipped `quota-probe` now exits 64 on a bad argument, and
+  `doctor` walks the whole contract (`--provider`, `--mark-exhausted`, `--clear`) with a throwaway name and marks file,
+  and fails on a usage error.
+- A silent start is a refusal. An exhausted account can hold a turn open without any error, so "start it, and if it
+  fails go to the next candidate" never moved on. `quota-gate` and `cross-review` now wait at most 10 minutes for the
+  first output and treat silence like a refusal: stop it, mark the provider, take the next candidate.
+
 ## 0.8.1
 
 ### Fixed

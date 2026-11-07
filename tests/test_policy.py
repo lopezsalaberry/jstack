@@ -113,3 +113,15 @@ def test_groom_never_sends_delivered_work_to_canceled():
     assert "integration branch" not in cancel, "merged work is DELIVERED, not a reason to cancel"
     delivered = next(line for line in text.splitlines() if line.strip().startswith("- DELIVERED"))
     assert "never to canceled" in text and "merge-base --is-ancestor" in text and delivered
+
+
+def test_a_silent_start_is_a_refusal_in_quota_gate_and_cross_review():
+    """2026-11-07: a review started on an account in a quota cooldown produced nothing for seven hours. No error ever
+    said it had refused, so nothing was marked and nothing moved on to the next candidate."""
+    gate = (ROOT / "skills/quota-gate/SKILL.md").read_text()
+    paragraph = gate.split("**Silence is a refusal.**")[1].split("\n\n")[0]
+    assert "10 minutes" in paragraph and "--mark-exhausted" in paragraph
+    assert "**Any other exit is a broken probe, not data.**" in gate
+    review = (ROOT / "skills/cross-review/SKILL.md").read_text()
+    step = review.split("3. **Try it.**")[1].split("4. **Independence ladder.**")[0]
+    assert "10 minutes" in step and "silent" in step

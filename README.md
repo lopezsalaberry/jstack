@@ -13,7 +13,7 @@ repo; the only outside requirements are `git`, `gh` and `python3`.
 2. **Install.**
    ```sh
    git clone https://github.com/lopezsalaberry/jstack.git ~/jstack
-   cd ~/jstack && git checkout v0.8.2      # pin a tag; upstream is never auto-synced
+   cd ~/jstack && git checkout v0.8.3      # pin a tag; upstream is never auto-synced
    ./install.sh --dry-run                  # see what it would link
    ./install.sh
    ```

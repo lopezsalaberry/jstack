@@ -2,6 +2,13 @@
 
 Format follows Keep a Changelog. Versions are tagged `vX.Y.Z`; install a tag, not `main`.
 
+## 0.8.3
+
+### Changed
+- The wait for a started model's first output is 2 minutes, not 10. Measured on 643 healthy sessions: the first
+  output arrives in 3 to 4 seconds at the median, 8 to 14 seconds at the 99th percentile, 20 seconds at worst, and none
+  took a minute. Five sessions out of 170 never produced anything at all, so the silent start was not a one-off.
+
 ## 0.8.2
 
 ### Fixed

@@ -28,8 +28,8 @@ by default; `--minutes N` changes it) and move to the next candidate at once. Th
 probe answer 1 for that provider on this machine, so no other worker retries it. When a provider
 answers again, `--clear <provider>` removes the mark.
 
-**Silence is a refusal.** A model that was started and has produced nothing 10 minutes later is not slow, it is
-not answering: an exhausted account can hold a turn open without any error (a review once sat silent for
+**Silence is a refusal.** A model that was started and has produced nothing 2 minutes later is not slow, it is
+not answering (a healthy start shows its first output within seconds): an exhausted account can hold a turn open without any error (a review once sat silent for
 seven hours). Stop it, mark the provider with `--mark-exhausted <provider> --reason silent`, and take the next
 candidate.
 

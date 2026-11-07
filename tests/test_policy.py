@@ -120,8 +120,8 @@ def test_a_silent_start_is_a_refusal_in_quota_gate_and_cross_review():
     said it had refused, so nothing was marked and nothing moved on to the next candidate."""
     gate = (ROOT / "skills/quota-gate/SKILL.md").read_text()
     paragraph = gate.split("**Silence is a refusal.**")[1].split("\n\n")[0]
-    assert "10 minutes" in paragraph and "--mark-exhausted" in paragraph
+    assert "nothing 2 minutes later" in paragraph and "10 minutes" not in paragraph and "--mark-exhausted" in paragraph
     assert "**Any other exit is a broken probe, not data.**" in gate
     review = (ROOT / "skills/cross-review/SKILL.md").read_text()
     step = review.split("3. **Try it.**")[1].split("4. **Independence ladder.**")[0]
-    assert "10 minutes" in step and "silent" in step
+    assert "wait at most 2 minutes" in step and "those 2 minutes" in step and "10 minutes" not in step and "silent" in step

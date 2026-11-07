@@ -4,6 +4,7 @@
   proof-valid --print [--base REF]
   proof-valid --checklist FILE [--base REF]
   proof-valid --patch-id ID [--base REF]
+  proof-valid --stamp FILE [--base REF]
 
 A proof covers a patch, not a commit. A rebase gives every commit a new SHA without changing the
 change, so comparing SHAs says "stale" when nothing moved, and trusting an old SHA hides real edits.
@@ -13,12 +14,16 @@ with the one recorded when the proof was made.
 --print        print `Revision:` and `Patch-id:` lines for HEAD, to paste into the checklist
 --checklist    read the `Patch-id:` line of an evidence checklist and compare it with HEAD
 --patch-id     compare a given id with HEAD
+--stamp        write the current `Revision:` and `Patch-id:` into the checklist FILE, once the proof is final.
+               `checklist-init` runs before the change exists, so it can only record an empty patch; a
+               checklist that still records one is refused by --checklist (exit 2), never called valid.
 
 BASE defaults to the remote's default branch (origin/HEAD), then origin/main, main, master.
 A proof whose revision is already part of BASE has landed: the change is no longer a patch over BASE,
 so there is nothing left to compare and the proof stands. (A squash merge rewrites the commit, so a
 squashed change is not recognised this way; compare before merging.)
-Exit 0 same patch or already landed, 1 the patch changed (print both ids), 2 usage error or no way to compute.
+Exit 0 same patch or already landed, 1 the patch changed (print both ids), 2 usage error, no way to compute, or a
+checklist that records no patch.
 """
 from __future__ import annotations
 
@@ -57,6 +62,28 @@ def patch_id(base: str, ref: str = "HEAD") -> str:
     return out[0] if out else "empty"
 
 
+UNANCHORED = ("empty", "?")
+
+
+def stamp(path: Path, revision: str, patch: str) -> None:
+    if patch in UNANCHORED:
+        print("proof-valid: nothing to stamp, HEAD adds no change over the base", file=sys.stderr)
+        sys.exit(2)
+    try:
+        text = path.read_text()
+    except OSError as error:
+        print(f"proof-valid: {error}", file=sys.stderr)
+        sys.exit(2)
+    for key, value in (("Revision", revision), ("Patch-id", patch)):
+        line = f"{key}: {value}"
+        if re.search(rf"^{key}:.*$", text, re.M):
+            text = re.sub(rf"^{key}:.*$", line, text, count=1, flags=re.M)
+        else:
+            text = text.rstrip("\n") + f"\n{line}\n"
+    path.write_text(text)
+    print(f"proof-valid: stamped {path} with revision {revision[:7]} and patch {patch}")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--base")
@@ -64,12 +91,16 @@ def main() -> None:
     group.add_argument("--print", action="store_true", dest="show")
     group.add_argument("--checklist", type=Path)
     group.add_argument("--patch-id", dest="recorded")
+    group.add_argument("--stamp", type=Path)
     args = ap.parse_args()
     base = args.base or default_base()
     now = patch_id(base)
     if args.show:
         print(f"Revision: {git('rev-parse', 'HEAD').strip()}")
         print(f"Patch-id: {now}")
+        return
+    if args.stamp:
+        stamp(args.stamp, git("rev-parse", "HEAD").strip(), now)
         return
     if args.checklist:
         try:
@@ -82,6 +113,10 @@ def main() -> None:
             print(f"proof-valid: no `Patch-id:` line in {args.checklist}; the proof cannot be tied to a patch", file=sys.stderr)
             sys.exit(2)
         recorded = match.group(1)
+        if recorded in UNANCHORED and now != recorded:
+            print(f"proof-valid: {args.checklist} records no patch ({recorded}): it was started before the change existed. "
+                  f"Run `proof-valid --stamp {args.checklist}` once the proof is final", file=sys.stderr)
+            sys.exit(2)
         revision = re.search(r"^Revision:\s*([0-9a-f]{7,40})", text, re.M)
         if revision and recorded != now and subprocess.run(
                 ["git", "merge-base", "--is-ancestor", revision.group(1), base], capture_output=True).returncode == 0:

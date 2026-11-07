@@ -24,6 +24,12 @@ MUTATIONS = {
     "the environment no longer overrides AGENTS.md": (
         "skills/jstack/scripts/jstack-settings", 'if f"JSTACK_{key.upper()}" in env:', "if False:",
         "tests/test_tools.py::test_settings_precedence_is_env_then_agents_md_then_default"),
+    "a checklist that records no patch is accepted": (
+        "skills/evidence/scripts/proof-valid", "if recorded in UNANCHORED and now != recorded:", "if False:",
+        "tests/test_tools.py::test_a_checklist_started_before_the_change_is_never_called_valid"),
+    "a stamp keeps the old patch id": (
+        "skills/evidence/scripts/proof-valid", '("Patch-id", patch)', '("Patch-id", "empty")',
+        "tests/test_tools.py::test_a_checklist_started_before_the_change_is_never_called_valid"),
     "a changed patch is still called valid": (
         "skills/evidence/scripts/proof-valid", "if recorded == now:", "if True:",
         "tests/test_tools.py::test_proof_follows_the_patch_not_the_commit"),

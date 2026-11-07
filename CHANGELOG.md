@@ -2,6 +2,15 @@
 
 Format follows Keep a Changelog. Versions are tagged `vX.Y.Z`; install a tag, not `main`.
 
+## 0.9.1
+
+### Fixed
+- `evidence`: a checklist started with `checklist-init` before the change existed recorded an empty patch and the
+  base's tip as its revision, so the first `proof-valid --checklist` after the change answered "landed" and exit 0 for
+  any patch. Found by an independent review of `wrap-up`. `proof-valid --checklist` now refuses a checklist that
+  records no patch (exit 2, naming the fix), `proof-valid --stamp FILE` writes the current revision and patch id once
+  the proof is final, and `checklist-init` says so when the patch is still empty.
+
 ## 0.9.0
 
 ### Added

@@ -4,7 +4,8 @@
   checklist-init TICKET [--dir .artifacts] [--base REF] [--env TEXT] [--force]
 
 Creates <dir>/<TICKET>/checklist.md with the current revision, the patch id (so `proof-valid` can later
-say whether the proof still describes the patch that will land), the proof levels from `prove-it`, and an
+say whether the proof still describes the patch that will land; `empty` when the change does not exist yet, in
+which case `proof-valid --stamp` fills it in once the proof is final), the proof levels from `prove-it`, and an
 empty table with one row to copy per target. Also keeps the artifacts folder out of commits through
 .git/info/exclude (local, never committed). Refuses to overwrite an existing checklist without --force.
 Exit 0 created, 1 already exists, 2 not in a git repo or no base branch.
@@ -66,6 +67,9 @@ def main() -> None:
             path.parent.mkdir(parents=True, exist_ok=True)
             with path.open("a") as handle:
                 handle.write(folder + "\n")
+    if fields.get("Patch-id") in ("empty", None):
+        print("checklist-init: HEAD adds no change over the base yet, so the patch id is empty. When the proof is final run "
+              f"`proof-valid --stamp {target}`; until then `proof-valid --checklist` refuses it", file=sys.stderr)
     print(target)
 
 

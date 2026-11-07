@@ -398,6 +398,44 @@ def test_checklist_init_starts_a_proof_that_proof_valid_accepts(tmp_path):
     assert run([PROOFVALID, "--checklist", r / ".artifacts/T-9/checklist.md", "--base", "main"], cwd=r).returncode == 1
 
 
+def test_a_checklist_started_before_the_change_is_never_called_valid(tmp_path):
+    """0.9.1: checklist-init runs first, when the patch is still empty and the revision is the base's tip. The first
+    proof-valid after the change then answered "landed" (that revision is in the base) and exited 0, for any patch."""
+    r = repo(tmp_path)
+    git(r, "checkout", "-q", "-b", "feat")
+    started = run([CHECKLIST, "T-1", "--base", "main"], cwd=r)
+    assert started.returncode == 0 and "proof-valid --stamp" in started.stderr, started.stderr
+    checklist = r / ".artifacts/T-1/checklist.md"
+    assert "Patch-id: empty" in checklist.read_text()
+    (r / "a.txt").write_text("1\n")
+    commit_all(r)
+    check = lambda: run([PROOFVALID, "--checklist", checklist, "--base", "main"], cwd=r)
+    unanchored = check()
+    assert unanchored.returncode == 2 and "--stamp" in unanchored.stderr and "landed" not in unanchored.stdout
+    stamped = run([PROOFVALID, "--stamp", checklist, "--base", "main"], cwd=r)
+    assert stamped.returncode == 0 and "stamped" in stamped.stdout, stamped.stderr
+    assert "Patch-id: empty" not in checklist.read_text() and "A target is PASS only at level 4 or 5" in checklist.read_text()
+    assert check().returncode == 0
+    (r / "a.txt").write_text("2\n")
+    commit_all(r)
+    assert check().returncode == 1, "an edit after the stamp must invalidate the proof"
+
+
+def test_stamp_refuses_when_there_is_nothing_to_prove_and_adds_missing_lines(tmp_path):
+    r = repo(tmp_path)
+    checklist = tmp_path / "c.md"
+    checklist.write_text("# Evidence\n")
+    nothing = run([PROOFVALID, "--stamp", checklist, "--base", "main"], cwd=r)
+    assert nothing.returncode == 2 and "nothing to stamp" in nothing.stderr
+    git(r, "checkout", "-q", "-b", "feat")
+    (r / "a.txt").write_text("1\n")
+    commit_all(r)
+    assert run([PROOFVALID, "--stamp", checklist, "--base", "main"], cwd=r).returncode == 0
+    text = checklist.read_text()
+    assert text.count("Revision: ") == 1 and text.count("Patch-id: ") == 1
+    assert run([PROOFVALID, "--checklist", checklist, "--base", "main"], cwd=r).returncode == 0
+
+
 def test_a_proof_whose_change_already_landed_still_stands(tmp_path):
     r = repo(tmp_path)
     git(r, "checkout", "-q", "-b", "feat")

@@ -9,6 +9,7 @@ so there is nothing here that can disagree with a skill.
 | Which model runs a worker, what happens at 0% quota, what is "unknown"? | `skills/quota-gate/SKILL.md` |
 | How do tickets run in parallel, how are conflicts and 429s handled, who relaunches a stalled worker? | `skills/fanout/SKILL.md` |
 | How is the backlog cleaned and ranked, and how is the next work chosen? | `skills/groom/SKILL.md` |
+| How is a wave validated, closed and followed by a recommendation? | `skills/wrap-up/SKILL.md` |
 | What do `INTEGRATED`, `READY_FOR_INTEGRATOR`, `WAITING` and `BLOCKED(...)` mean? | `skills/jstack/SKILL.md` (status words) and `skills/iterate/SKILL.md` (when each applies) |
 | What goes in `RUNSTATE.md`? | `skills/jstack/SKILL.md` |
 | What can a worker merge, force-push or delete? | `skills/full-send/SKILL.md` |

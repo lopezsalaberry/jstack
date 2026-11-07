@@ -12,6 +12,7 @@
 
 - A decision the operator gives in the thread is recorded in the project's product doc, if it has one: the one place decisions live. Otherwise it is asked again next session.
 - At the start of a session, run `wave-status` (see `fanout`), list the open PRs and relaunch what is `WAITING` before picking new work.
+- When a wave drains, or the operator asks what is next, run `wrap-up`.
 
 ## jstack settings
 

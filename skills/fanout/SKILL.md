@@ -75,3 +75,5 @@ no new commit is treated as dead, per step 4.
 
 Table: ticket, status, sha or blocker, progress (baseline to now), iterations run. Then the day's
 integrated merges: `git fetch origin && git log --first-parent --since=1.day origin/<integration branch> --oneline | wc -l`.
+
+When the wave drains, run `wrap-up` after this table: it validates what the workers reported and recommends the next step.

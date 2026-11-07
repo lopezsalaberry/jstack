@@ -2,6 +2,21 @@
 
 Format follows Keep a Changelog. Versions are tagged `vX.Y.Z`; install a tag, not `main`.
 
+## 0.9.0
+
+### Added
+- `wrap-up`: the last phase of a wave, run by the parent. It validates what the workers reported (the real artifact
+  and not the summary, scope against `Touches:`, the proof against the patch, the gate again, each acceptance
+  criterion, and an independent review when a high-risk or user-visible change has no verdict for its patch),
+  offers every merge to the operator in one question that also carries the recommended next step, acts on the answer
+  and records it.
+  Found by reading 12 hours of runs: 1 of 21 closing reports said what to do next, `cross-review` was loaded in none
+  of the sessions, and four candidates the workers had reported ready were waiting for someone to validate and
+  integrate them.
+
+### Changed
+- `fanout` ends with "run `wrap-up`", and the `templates/AGENTS.md` session rules carry the same line.
+
 ## 0.8.3
 
 ### Changed

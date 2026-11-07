@@ -98,6 +98,7 @@ def test_the_template_carries_the_session_rules():
         "7. A user-visible ticket": ("`INTEGRATED`", "review", "not to done"),
         "- A decision": ("product doc",),
         "- At the start": ("`wave-status`", "`WAITING`"),
+        "- When a wave drains": ("`wrap-up`",),
     }
     for start, tokens in rules.items():
         found = [line for line in lines if line.startswith(start)]
@@ -125,3 +126,69 @@ def test_a_silent_start_is_a_refusal_in_quota_gate_and_cross_review():
     review = (ROOT / "skills/cross-review/SKILL.md").read_text()
     step = review.split("3. **Try it.**")[1].split("4. **Independence ladder.**")[0]
     assert "wait at most 2 minutes" in step and "those 2 minutes" in step and "10 minutes" not in step and "silent" in step
+
+
+def test_wrap_up_validates_before_it_recommends_and_asks_once():
+    """0.9.0: the last phase validates what workers reported, and only then recommends, in one question."""
+    import re
+
+    raw = (ROOT / "skills/wrap-up/SKILL.md").read_text()
+    body = raw.split("# Wrap-up", 1)[1]
+    flat = lambda s: " ".join(s.split())  # prose wraps: compare without line breaks
+    parts = re.split(r"(?m)^(\d)\. \*\*", body)
+    steps = {int(parts[i]): flat(parts[i + 1]) for i in range(1, len(parts) - 1, 2)}
+    assert list(steps) == [1, 2, 3, 4, 5], "wrap-up steps: collect, validate, decide, recap, record, in that order"
+    assert steps[1].startswith("Collect") and steps[2].startswith("Validate") and steps[3].startswith("Decide")
+    assert steps[4].startswith("Recap, then recommend") and steps[5].startswith("Act on the answer, then record")
+    assert "Run by the parent session, never by a worker" in flat(body)
+    # each rule sits in its own step, pinned as a whole sentence: "and" turned into "or", a "never" added or an
+    # "unless" appended changes the sentence and fails here
+    pins = {
+        1: ("A `READY_FOR_INTEGRATOR` row whose PR is already merged or closed is old: ignore it.",
+            "A report is not evidence: read the real artifact (the PR or branch, the head SHA, the checks).",
+            "When the description, the bot summary and the code disagree, the code at the head and the checks win.",
+            "confirm the merge commit is on the integration branch (`git merge-base --is-ancestor`) and nothing more."),
+        2: ("`git rev-parse HEAD` must equal the PR head and the tree must be clean.",
+            "Run one gate at a time with a time limit.",
+            "anything that needs live services or secrets is not run, and you say so.",
+            "stays inside the ticket's `Touches:`.",
+            "`evidence/scripts/proof-valid --base origin/<integration branch>`",
+            "A checklist with an empty `Patch-id:`, or none, is \"proof without anchor\": rely on your own rerun.",
+            "Rerun the gate the ticket's `Done when:` names, focused.",
+            "A criterion the worker rewrote is a decision for the operator, never met.",
+            "a job that never ran is neither a pass nor a failure",
+            "A failure at the head is a failure.",
+            "and no verdict in the PR description covers this patch, run `cross-review` yourself in the mode it names.",
+            "A verify-mode verdict covers it while `proof-valid --patch-id` accepts its patch id; a break-mode verdict covers the head it names.",
+            "Write down what the worker said it did not verify and what you did not check."),
+        3: ("Decide each one**, before anything is merged.",
+            "a ticket whose comments show two send-backs goes into the question instead.",
+            "Offer to merge only when every criterion is met and the Merge gate of `full-send` is green on the head.",
+            "Merging is the operator's call: it goes in the question as an option that names the PR and its head,",
+            "Never merge what you could not validate."),
+        4: ("ONE recommendation and up to two alternatives",
+            "Put every decision the operator owes in ONE question, the recommended option first, asked with the \"Ask the user\" action in `jstack`",
+            "Never \"nothing to do, what do you want?\".",
+            "No hashes or thread ids."),
+        5: ("Merge only the PRs the yes names, and only while the head is still the one it named:",
+            "which only adds and never cancels, folds or parks:",
+            "Nothing moves to done but the operator's acceptance: integrated work goes to review.",
+            "The decisions the operator gave go to the product doc.",
+            "Remove the worktrees and branches this session created or merged once the comment holds the proof summary;"),
+    }
+    for step, phrases in pins.items():
+        for phrase in phrases:
+            assert phrase in steps[step], f"wrap-up step {step} lost: {phrase}"
+    # it points at the skills that own a rule instead of restating them
+    for step, skills in {2: ("evidence", "babysit-pr", "cross-review"), 3: ("full-send", "fanout"),
+                         4: ("groom", "jstack"), 5: ("babysit-pr", "full-send", "fanout", "ticket-start")}.items():
+        for skill in skills:
+            assert f"`{skill}" in steps[step], f"wrap-up step {step} no longer points at {skill}"
+    # there is no merge before the question: the merge is in step 5, after the recap and the one question
+    assert not re.search(r"(?i)\bmerge (it|them|the PR)s? (now|first)", flat(body))
+    # it does not claim what the other skills deny: workers may start cross-review for high-risk work
+    assert "Workers do not start reviewers" not in flat(body)
+    fan = (ROOT / "skills/fanout/SKILL.md").read_text().split("## Final report")[1]
+    assert "When the wave drains, run `wrap-up` after this table: it validates what the workers reported and recommends the next step." in flat(fan)
+    template = [l for l in (ROOT / "templates/AGENTS.md").read_text().splitlines() if l.startswith("- When a wave drains")]
+    assert template == ["- When a wave drains, or the operator asks what is next, run `wrap-up`."]

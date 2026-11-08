@@ -78,6 +78,35 @@ def test_quota_probe_exit_codes_and_unknown_is_not_exhausted(tmp_path):
     assert run([PROBE, "--provider", "beta"], cwd=tmp_path).returncode == 2   # no source at all
 
 
+def test_the_shipped_probe_hands_the_call_to_the_configured_one(tmp_path):
+    """2026-11-08: a session ran the shipped probe directly, read "unknown (no quota source configured)" and carried it for
+    two days while the configured probe said the provider was at 0%. Whichever probe a caller reaches must answer alike."""
+    fake = tmp_path / "fake-probe"
+    fake.write_text("#!/usr/bin/env python3\nimport sys\nprint('configured', *sys.argv[1:])\nsys.exit(1)\n")
+    fake.chmod(0o755)
+    direct = run([PROBE, "--provider", "codex"], cwd=tmp_path, env={"JSTACK_QUOTA_PROBE": str(fake)})
+    assert direct.returncode == 1 and direct.stdout.strip() == "configured --provider codex", (direct.stdout, direct.stderr)
+    marked = run([PROBE, "--mark-exhausted", "codex", "--minutes", "5"], cwd=tmp_path, env={"JSTACK_QUOTA_PROBE": str(fake)})
+    assert marked.stdout.strip() == "configured --mark-exhausted codex --minutes 5"
+    listing = run([PROBE], cwd=tmp_path, env={"JSTACK_QUOTA_PROBE": str(fake)})
+    assert listing.returncode == 1 and listing.stdout.strip() == "configured", "a call with no arguments reaches it too"
+    r = repo(tmp_path, f"# P\n\n## jstack settings\nquota_probe: {fake}\n")
+    assert run([PROBE, "--provider", "codex"], cwd=r).returncode == 1, "the AGENTS.md setting is reached too"
+    src = tmp_path / "q.txt"
+    src.write_text("codex acct 50\n")
+    explicit = run([PROBE, "--source", src, "--provider", "codex"], cwd=tmp_path, env={"JSTACK_QUOTA_PROBE": str(fake)})
+    assert explicit.returncode == 0, "an explicit --source is a request for this file, not for the configured probe"
+    itself = run([PROBE, "--provider", "codex"], cwd=tmp_path, env={"JSTACK_QUOTA_PROBE": str(PROBE)})
+    assert itself.returncode == 2, "a setting that names this script must not loop"
+    wrapper = tmp_path / "wrapper-probe"                     # a configured probe that calls the shipped one again
+    wrapper.write_text(f"#!/usr/bin/env python3\nimport os, sys\nos.execv(sys.executable, [sys.executable, {str(PROBE)!r}, *sys.argv[1:]])\n")
+    wrapper.chmod(0o755)
+    chained = run([PROBE, "--provider", "codex"], cwd=tmp_path, env={"JSTACK_QUOTA_PROBE": str(wrapper)}, timeout=10)
+    assert chained.returncode == 2, "a hand-off must not hand off again"
+    missing = run([PROBE, "--provider", "codex"], cwd=tmp_path, env={"JSTACK_QUOTA_PROBE": str(tmp_path / "gone")})
+    assert missing.returncode == 2, "a configured probe that does not exist falls back to this script (doctor reports it)"
+
+
 def test_quota_probe_rejects_a_malformed_line(tmp_path):
     src = tmp_path / "q.txt"
     src.write_text("alpha only-two-fields\n")

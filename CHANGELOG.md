@@ -2,6 +2,20 @@
 
 Format follows Keep a Changelog. Versions are tagged `vX.Y.Z`; install a tag, not `main`.
 
+## 0.9.2
+
+### Fixed
+- `quota-gate`: the shipped `quota-probe` now hands any call without `--source` to the command the `quota_probe` setting
+  names when that is a different one. A session that ran the shipped file directly read "unknown (no quota source
+  configured)" for a provider the configured probe knew to be at 0%, wrote it down as fact, and two days later started a
+  review on that provider, which never answered. Whichever probe a caller reaches now gives the same answer.
+- `quota-gate`: a reading is for the launch that asked for it; "unknown" from earlier in a session, or from a probe that is
+  not the configured one, is not data.
+- `cross-review`: choosing a reviewer says to run `<quota_probe> --provider <provider>` for every candidate before starting
+  any, not to guess from the model list, and the ledger carries a `Probed:` line with the exit codes. After starting a
+  reviewer the parent does not end its turn: the new action "Check that a started agent answered" in `jstack` is the
+  2-minute check that silence is a refusal.
+
 ## 0.9.1
 
 ### Fixed

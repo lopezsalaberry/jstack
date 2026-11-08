@@ -25,12 +25,20 @@ per repo: quota belongs to the account), one line `<provider> <expires epoch> <r
 Default source: $JSTACK_QUOTA_SOURCE, then ./.jstack/quota.txt, then ~/.config/jstack/quota.txt.
 Default max age: $JSTACK_QUOTA_MAX_AGE_MINUTES or 30.
 
+Hand-off: this script is only the default `quota_probe`. When the `quota_probe` setting (environment
+JSTACK_QUOTA_PROBE or the repo's AGENTS.md) names another command, any call without --source runs that command
+instead, so it makes no difference which of the two a caller reaches. A caller that ran this file directly used
+to read "no quota source configured" as "unknown" for a provider the configured probe knew to be at 0%.
+
 A bad argument exits 64. In this contract exit 2 means unknown, and a usage error must never look like it.
 """
 from __future__ import annotations
 
 import argparse
 import os
+import shlex
+import shutil
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -93,6 +101,24 @@ class Parser(argparse.ArgumentParser):
         sys.exit(64)
 
 
+def configured_probe() -> list[str] | None:
+    """The command of the `quota_probe` setting when it is not this script, else None (use this script)."""
+    if os.environ.get("JSTACK_QUOTA_HANDOFF"):
+        return None
+    settings = Path(__file__).resolve().parents[2] / "jstack" / "scripts" / "jstack-settings"
+    if not settings.is_file():
+        return None
+    try:
+        out = subprocess.run([sys.executable, str(settings), "quota_probe"], capture_output=True, text=True, timeout=10)
+        command = shlex.split(out.stdout.strip()) if out.returncode == 0 else []
+        target = Path(command[0]) if "/" in command[0] else Path(shutil.which(command[0]) or "")
+        if not command or not target.is_file() or not os.access(target, os.X_OK) or target.resolve() == Path(__file__).resolve():
+            return None
+    except (OSError, ValueError, IndexError, subprocess.SubprocessError):
+        return None
+    return command
+
+
 def main() -> None:
     ap = Parser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--source")
@@ -105,6 +131,10 @@ def main() -> None:
                     default=float(os.environ.get("JSTACK_QUOTA_MAX_AGE_MINUTES", "30")))
     args = ap.parse_args()
     now = time.time()
+    if not args.source:
+        command = configured_probe()
+        if command:
+            os.execvpe(command[0], command + sys.argv[1:], {**os.environ, "JSTACK_QUOTA_HANDOFF": "1"})
     if args.mark_exhausted or args.clear:
         marks = live_marks(now)
         if args.mark_exhausted:

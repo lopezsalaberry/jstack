@@ -18,6 +18,11 @@ listed). The shipped `scripts/quota-probe` reads a plain file of
 **Unknown is not exhausted.** On exit 2, go ahead and write "quota unknown for
 `<provider>`" in the report. Do not invent scarcity from missing data.
 
+**A reading is for this launch only.** Run the probe again before every launch, and write the command's own output in the
+report. A result from earlier in the session, or "no quota source configured" from a probe that is not the one the
+`quota_probe` setting names, is not data: a session that read "unknown" once kept calling a provider unknown for two days
+while the configured probe said it was at 0%.
+
 **Any other exit is a broken probe, not data.** Exit 64, or a usage text on stderr, means the probe did not
 understand the call; a tool whose usage error exits 2 looks exactly like "unknown". Write "quota probe error"
 in the report and carry on as unknown, but do not read it as data. `doctor` checks this.

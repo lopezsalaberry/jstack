@@ -40,10 +40,13 @@ reason a change is stuck: there is always a next candidate, and a refusal sends 
    model the harness can start (list them with the "List the models" action in `jstack`), models
    from a family other than the author's first. Drop any candidate that is the author's own
    session.
-2. **Skip what is known to be out.** Ask `quota-gate` about each candidate's provider. Exit 1 (at
-   0% or marked exhausted): skip it. Exit 0 or 2: it is a candidate.
-3. **Try it.** Start the reviewer with the harness's delegate action and wait at most 2 minutes for its
-   first output. If it fails for quota, rate limit, authentication or availability, or stays silent for
+2. **Skip what is known to be out.** Before you start any candidate, run `<quota_probe> --provider <provider>`
+   for each candidate's provider: the command is the `quota_probe` setting (`jstack-settings quota_probe`
+   prints it; the contract is in `quota-gate`). Exit 1 (at 0% or marked exhausted): skip it. Exit 0 or 2: it is
+   a candidate. The list of models says what can start, not what has quota, so never judge a provider from
+   it and never start a candidate you did not probe.
+3. **Try it.** Start the reviewer with the harness's delegate action, do not end your turn, and wait at most
+   2 minutes for its first output with the "Check that a started agent answered" action in `jstack`. If it fails for quota, rate limit, authentication or availability, or stays silent for
    those 2 minutes (silence is a refusal, see `quota-gate`), mark the provider exhausted as `quota-gate`
    describes and go to the next candidate immediately. Do not retry the same provider and do not wait.
 4. **Independence ladder.** Take the best level any candidate gives, and write it in the ledger:
@@ -95,6 +98,7 @@ lines and escalate. Put this block in the PR description so the review is audita
 
 ```
 Cross-review: reviewer <model> (author <model>) | independence <L1|L2|L3|family unknown> | verdict <APPROVE|CHANGES>
+Probed: <provider=exit code, for every candidate considered>
 Skipped before this one: <provider: reason, or none>
 Verified and fixed: <n> | Dropped (did not reproduce): <n> | UNPROVEN: <n> | Diff before/after: <lines>
 ```

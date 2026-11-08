@@ -123,8 +123,10 @@ def test_a_silent_start_is_a_refusal_in_quota_gate_and_cross_review():
     paragraph = gate.split("**Silence is a refusal.**")[1].split("\n\n")[0]
     assert "nothing 2 minutes later" in paragraph and "10 minutes" not in paragraph and "--mark-exhausted" in paragraph
     assert "**Any other exit is a broken probe, not data.**" in gate
+    fresh = " ".join(gate.split("**A reading is for this launch only.**")[1].split("\n\n")[0].split())
+    assert "Run the probe again before every launch" in fresh and "is not data" in fresh and "earlier in the session" in fresh
     review = (ROOT / "skills/cross-review/SKILL.md").read_text()
-    step = review.split("3. **Try it.**")[1].split("4. **Independence ladder.**")[0]
+    step = " ".join(review.split("3. **Try it.**")[1].split("4. **Independence ladder.**")[0].split())
     assert "wait at most 2 minutes" in step and "those 2 minutes" in step and "10 minutes" not in step and "silent" in step
 
 
@@ -192,3 +194,21 @@ def test_wrap_up_validates_before_it_recommends_and_asks_once():
     assert "When the wave drains, run `wrap-up` after this table: it validates what the workers reported and recommends the next step." in flat(fan)
     template = [l for l in (ROOT / "templates/AGENTS.md").read_text().splitlines() if l.startswith("- When a wave drains")]
     assert template == ["- When a wave drains, or the operator asks what is next, run `wrap-up`."]
+
+
+def test_a_reviewer_is_probed_before_it_is_started_and_the_ledger_shows_it():
+    """2026-11-08: 8 of 8 reviewers started on a provider with no quota since 11-06 had no probe call before them, 4 of the
+    parents had loaded cross-review. Step 2 said "ask quota-gate" with no command, so the model guessed "quota looks unknown"
+    from the model list, started it, ended its turn, and the silent review sat for 34 minutes."""
+    flat = lambda s: " ".join(s.split())
+    review = flat((ROOT / "skills/cross-review/SKILL.md").read_text())
+    step2 = review.split("2. **Skip what is known to be out.**")[1].split("3. **Try it.**")[0]
+    for phrase in ("Before you start any candidate, run `<quota_probe> --provider <provider>` for each candidate's provider",
+                   "Exit 1 (at 0% or marked exhausted): skip it.",
+                   "never judge a provider from it and never start a candidate you did not probe."):
+        assert phrase in step2, f"cross-review step 2 lost: {phrase}"
+    step3 = review.split("3. **Try it.**")[1].split("4. **Independence ladder.**")[0]
+    assert "do not end your turn" in step3 and '"Check that a started agent answered" action in `jstack`' in step3
+    assert "Probed: <provider=exit code, for every candidate considered>" in review
+    actions = flat((ROOT / "skills/jstack/SKILL.md").read_text())
+    assert "| Check that a started agent answered |" in actions and "2-minute timeout" in actions.split("| Check that a started agent answered |")[1].split("\n")[0]

@@ -2,6 +2,22 @@
 
 Format follows Keep a Changelog. Versions are tagged `vX.Y.Z`; install a tag, not `main`.
 
+## 0.9.3
+
+### Added
+- `doctor` says when the UI design gate is off. A repo with `design/tokens.json` and no `ui_paths` has no file that counts as
+  UI, so the design check never ran and nothing said so. Found by reading 24 hours of runs: 27 sessions edited UI files in
+  five repos that all had a design system, and none ran `token-lint`; none of the five set `ui_paths`.
+- `scripts/template-drift`: says which repos carry an older copy of `templates/AGENTS.md`. The template now starts with a
+  version marker, `<!-- jstack-template: X.Y.Z -->`, which a test ties to this changelog, so it moves when the template does.
+  `doctor` repeats the check for its repo. Found in the same 24 hours: three of five repos still had the 0.5.4 flow, none had
+  the `wrap-up` line, and no session had loaded `wrap-up` or `groom`.
+- `doctor --check-updates` compares the checkout with the newest `vX.Y.Z` tag on its `origin`. It needs the network, so it is
+  off by default, and a failed lookup is a warning.
+
+### Changed
+- `templates/AGENTS.md` starts with the version marker (the rules themselves are unchanged).
+
 ## 0.9.2
 
 ### Fixed

@@ -1,3 +1,5 @@
+<!-- jstack-template: 0.9.3 -->
+
 ## End-to-end flow (jstack)
 
 1. Code changes for tickets: use `fanout`, also for a single ticket (a queue of one). Skip this flow for read-only tasks, questions, and docs-only edits.

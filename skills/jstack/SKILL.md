@@ -11,6 +11,11 @@ defines both, so nothing else has to be installed.
 Requires `git`, `gh` (authenticated) and `python3`. Check with
 `scripts/doctor` (or `./install.sh --doctor`): it names what is missing.
 
+Each repo holds its own copy of `templates/AGENTS.md`, and the rules in that copy are the ones its agents are sure to
+read. The template's first line is a version marker. `scripts/template-drift [REPO ...]` says which repos carry an
+older copy (`stale`), and `doctor` repeats that for its repo. `doctor --check-updates` compares this checkout with
+the newest `vX.Y.Z` tag on its `origin`.
+
 ## Settings
 
 Put them in the repo's `AGENTS.md` under a heading `## jstack settings`, one

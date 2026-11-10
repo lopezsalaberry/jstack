@@ -212,3 +212,25 @@ def test_a_reviewer_is_probed_before_it_is_started_and_the_ledger_shows_it():
     assert "Probed: <provider=exit code, for every candidate considered>" in review
     actions = flat((ROOT / "skills/jstack/SKILL.md").read_text())
     assert "| Check that a started agent answered |" in actions and "2-minute timeout" in actions.split("| Check that a started agent answered |")[1].split("\n")[0]
+
+
+# The rules in templates/AGENTS.md are the ones every repo's agents read, and each repo holds a copy. `template-drift` and
+# `doctor` tell a repo its copy is old by comparing the marker on the template's first line, so the marker must move when
+# the template does. When this fails: bump the marker to the release that changes the template, say so under that release in
+# CHANGELOG.md (mention `templates/AGENTS.md`), and pin the new hash here.
+TEMPLATE_BODY_SHA256 = "ea6c32e32ce368f49a90e27f2eefd4a92732d4a811bf71cf0ce50c1d2891658e"
+
+
+def test_the_template_marker_moves_when_the_template_does():
+    import hashlib
+    text = (ROOT / "templates/AGENTS.md").read_text()
+    first, body = text.split("\n", 1)
+    found = re.fullmatch(r"<!-- jstack-template: (\d+\.\d+\.\d+) -->", first)
+    assert found, "templates/AGENTS.md must start with `<!-- jstack-template: X.Y.Z -->`"
+    assert hashlib.sha256(body.encode()).hexdigest() == TEMPLATE_BODY_SHA256, (
+        "templates/AGENTS.md changed: bump its marker, mention `templates/AGENTS.md` under that release in CHANGELOG.md, and pin the new hash")
+    version = found.group(1)
+    section = (ROOT / "CHANGELOG.md").read_text().split(f"## {version}\n", 1)
+    assert len(section) == 2, f"CHANGELOG.md has no section for the template marker {version}"
+    assert "templates/AGENTS.md" in section[1].split("\n## ", 1)[0], f"the {version} section does not mention templates/AGENTS.md"
+    assert tuple(map(int, version.split("."))) <= tuple(map(int, (ROOT / "VERSION").read_text().split("."))), "the marker is ahead of VERSION"

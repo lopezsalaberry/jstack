@@ -6,6 +6,9 @@ exits 1 on a `FAIL`.
 | Symptom | Cause and fix |
 |---|---|
 | `FAIL gh` or `FAIL gh authenticated` | The GitHub CLI is missing or signed out. Install it from https://cli.github.com, then `gh auth login`. |
+| `warn UI design gate: OFF` | The repo has design tokens but no `ui_paths`, so no change counts as a UI change and the design check never runs. Add `ui_paths: <globs of the UI files>` to the `## jstack settings` block. |
+| `warn AGENTS.md matches the current template` | The repo's copy of the flow predates the current template, so its agents do not read the newer rules. Copy the flow and session rules from `templates/AGENTS.md` again and keep the project's own rules. `skills/jstack/scripts/template-drift REPO...` checks several repos at once. |
+| `warn jstack is the newest version` | The checkout is behind its `origin`. Run `git pull --ff-only && ./install.sh` in the jstack checkout. |
 | The agent does not see the skills | The harness reads a different skills folder. Run `./install.sh --target <that folder>`; restart the harness. Check with `ls -l <folder>`: each entry should link into `jstack/skills`. |
 | `install.sh` moved a folder to `.jstack-backup-*` | A skill of the same name already existed. Nothing was deleted. Restore it by hand from that folder if you want it back. |
 | `removed stale: ...` during install | A jstack link pointed to a skill that was renamed or removed (for example an older name). It is safe. |

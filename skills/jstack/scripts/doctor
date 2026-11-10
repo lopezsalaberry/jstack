@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 """doctor: say what is missing before the first run.
 
-  doctor [--repo PATH]
+  doctor [--repo PATH] [--check-updates]
 
 Prints one line per check: `ok`, `warn` or `FAIL`, then the check and what to do.
 Exit 1 when a FAIL line was printed.
+
+--check-updates also asks the checkout's `origin` for its newest `vX.Y.Z` tag and warns when this
+checkout is behind. It needs the network, so it is off by default; a failed lookup is a warning.
 """
 from __future__ import annotations
 
 import argparse
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -47,9 +51,70 @@ def probe_contract(probe: list[str]) -> tuple[str, str]:
     return "ok", "speaks the contract: --provider, --mark-exhausted, --clear; exit 2 means no data, which is not a block"
 
 
+def ui_gate(repo: Path, values: dict) -> tuple[str, str]:
+    """The UI design gate only applies to files that match `ui_paths`. A repo with a design system and no `ui_paths` has the
+    gate off without any message (2026-11-10: 27 sessions edited UI files in five repos that all had a design system, and none
+    ran the design check)."""
+    tokens = values["design_tokens"]
+    has_tokens = bool(tokens) and (repo / tokens).is_file()
+    if values["ui_paths"] and has_tokens:
+        return "ok", f"on for {values['ui_paths']}, tokens in {tokens}"
+    if values["ui_paths"]:
+        return "warn", f"`ui_paths` is set but {tokens!r} does not exist, so token-lint cannot run; fix `design_tokens` or add the file"
+    if has_tokens:
+        return "warn", (f"OFF: {tokens} exists but `ui_paths` is empty, so no change counts as a UI change and the design check never runs. "
+                        "Add `ui_paths: <globs of the UI files>` to the `## jstack settings` block")
+    return "ok", "no design tokens in this repo; nothing to gate"
+
+
+def template_state(repo: Path) -> tuple[str, str]:
+    """Ask `template-drift` about this repo's copy of the AGENTS.md flow."""
+    done = run([sys.executable, str(HERE / "template-drift"), str(repo)])
+    first = (done.stdout.strip().splitlines() or [""])[0]
+    status, _, rest = first.partition(" ")
+    detail = rest.strip().split(": ", 1)[-1]
+    if status == "ok":
+        return "ok", detail
+    if status == "skip":  # the doctor is run for a repo that is meant to use jstack
+        return "warn", f"{detail}; agents there never read the rules. Copy templates/AGENTS.md into it and keep the project's own rules"
+    if status in ("stale", "ahead"):
+        return "warn", detail
+    return "warn", done.stderr.strip() or "template-drift gave no answer"
+
+
+def newest_tag(checkout: Path) -> tuple:
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0",
+           "GIT_SSH_COMMAND": os.environ.get("GIT_SSH_COMMAND", "ssh -o BatchMode=yes -o ConnectTimeout=5")}
+    done = subprocess.run(["git", "-C", str(checkout), "ls-remote", "--tags", "--refs", "origin"],
+                          capture_output=True, text=True, timeout=15, env=env)
+    if done.returncode != 0:
+        raise OSError(done.stderr.strip().splitlines()[-1] if done.stderr.strip() else f"git exited {done.returncode}")
+    found = [tuple(map(int, m.groups())) for m in re.finditer(r"refs/tags/v(\d+)\.(\d+)\.(\d+)$", done.stdout, re.M)]
+    if not found:
+        raise OSError("origin has no vX.Y.Z tags")
+    return max(found)
+
+
+def checkout_freshness() -> tuple[str, str]:
+    checkout = SKILLS.parent
+    version_file = checkout / "VERSION"
+    if not version_file.is_file() or not (checkout / ".git").exists():
+        return "warn", "this copy of jstack is not a git checkout, so there is nothing to compare; install from a clone"
+    mine = tuple(int(x) for x in version_file.read_text().strip().split("."))
+    try:
+        latest = newest_tag(checkout)
+    except (OSError, subprocess.SubprocessError, ValueError) as error:
+        return "warn", f"could not ask origin for its newest tag ({error}); not checked"
+    dotted = lambda v: ".".join(map(str, v))  # noqa: E731
+    if latest > mine:
+        return "warn", f"this checkout is {dotted(mine)} and origin has {dotted(latest)}: run `git pull --ff-only && ./install.sh` in {checkout}"
+    return "ok", f"{dotted(mine)} (the newest tag on origin is {dotted(latest)})"
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--repo", type=Path, default=Path.cwd())
+    ap.add_argument("--check-updates", action="store_true", help="compare this checkout with origin's newest tag (network)")
     args = ap.parse_args()
     lines: list[tuple[str, str, str]] = []
 
@@ -77,6 +142,10 @@ def main() -> None:
         configured = settings.block(repo / "AGENTS.md")
         say("ok" if configured else "warn", "jstack settings in AGENTS.md",
             "" if configured else "none found; defaults apply. Add a `## jstack settings` block (see the `jstack` skill)")
+        level, detail = ui_gate(repo, values)
+        say(level, "UI design gate", detail)
+        level, detail = template_state(repo)
+        say(level, "AGENTS.md matches the current template", detail)
         probe = shlex.split(values["quota_probe"])
         if not probe or (not Path(probe[0]).exists() and not shutil.which(probe[0])):
             say("FAIL", "quota_probe command", f"{values['quota_probe']!r} not found")
@@ -88,6 +157,10 @@ def main() -> None:
             else:
                 level, detail = probe_contract(probe)
                 say(level, "quota_probe runs", detail)
+
+    if args.check_updates:
+        level, detail = checkout_freshness()
+        say(level, "jstack is the newest version", detail)
 
     names = sorted(p.name for p in SKILLS.iterdir() if (p / "SKILL.md").exists())
     for target in (Path.home() / ".claude" / "skills", Path.home() / ".agents" / "skills", Path.home() / ".codex" / "skills"):

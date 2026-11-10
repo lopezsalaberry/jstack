@@ -16,6 +16,8 @@ PROOFVALID = ROOT / "skills/evidence/scripts/proof-valid"
 TRAIL = ROOT / "skills/jstack/scripts/trail"
 CHECKLIST = ROOT / "skills/evidence/scripts/checklist-init"
 TOKENLINT = ROOT / "skills/full-send/scripts/token-lint"
+TEMPLATE_DRIFT = ROOT / "skills/jstack/scripts/template-drift"
+TEMPLATE = ROOT / "templates/AGENTS.md"
 
 
 def run(cmd, cwd=None, env=None, timeout=60):
@@ -563,3 +565,110 @@ def test_doctor_leaves_the_real_marks_file_alone(tmp_path):
     done = run([DOCTOR, "--repo", r], cwd=tmp_path, env={"JSTACK_QUOTA_MARKS": str(marks)})
     assert "ok   quota_probe runs" in done.stdout, done.stdout
     assert marks.read_text() == "claude 4102444800 keep me\n"
+
+
+# --- the UI gate, the template copy and the version, as the doctor reports them ----------------------
+
+def test_doctor_says_when_the_ui_gate_is_off(tmp_path):
+    """2026-11-10: five repos had a design system, none had `ui_paths`, so the gate never applied and 27 sessions that edited
+    UI files ran no design check. The gate being off has to be said out loud."""
+    r = repo(tmp_path)
+    (r / "design").mkdir()
+    (r / "design/tokens.json").write_text("{}")
+    path = {"PATH": str(tools_dir(tmp_path, True))}
+    assert "warn UI design gate: OFF" in run([DOCTOR, "--repo", r], cwd=tmp_path, env=path).stdout
+    (r / "AGENTS.md").write_text("# P\n\n## jstack settings\nui_paths: src/**\n")
+    assert "ok   UI design gate: on for src/**" in run([DOCTOR, "--repo", r], cwd=tmp_path, env=path).stdout
+    (r / "design/tokens.json").unlink()
+    assert "warn UI design gate: `ui_paths` is set but" in run([DOCTOR, "--repo", r], cwd=tmp_path, env=path).stdout
+    (r / "AGENTS.md").write_text("# P\n")
+    assert "ok   UI design gate: no design tokens" in run([DOCTOR, "--repo", r], cwd=tmp_path, env=path).stdout
+
+
+def _marker_line():
+    return TEMPLATE.read_text().splitlines()[0]
+
+
+def test_template_drift_names_old_copies(tmp_path):
+    """2026-11-10: three of five repos still carried the 0.5.4 flow, which lacks every rule added since."""
+    current = TEMPLATE.read_text()
+    marker = _marker_line()
+
+    def make(name, text):
+        d = tmp_path / name
+        d.mkdir()
+        (d / "AGENTS.md").write_text(text)
+        return d
+
+    fresh = make("fresh", current + "\n# Project rules\n")
+    old = make("old", current.replace(marker, "<!-- jstack-template: 0.1.0 -->"))
+    unmarked = make("unmarked", current.replace(marker + "\n\n", ""))
+    newer = make("newer", current.replace(marker, "<!-- jstack-template: 99.0.0 -->"))
+    ten = make("ten", current.replace(marker, "<!-- jstack-template: 0.10.0 -->"))   # 0.10.0 is newer than 0.9.3
+    plain = make("plain", "# Something else\n")
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    done = run([TEMPLATE_DRIFT, fresh, old, unmarked, newer, ten, plain, empty], cwd=tmp_path)
+    status = {Path(line.split()[1].rstrip(":")).name: line.split()[0] for line in done.stdout.splitlines()}
+    assert status == {"fresh": "ok", "old": "stale", "unmarked": "stale", "newer": "ahead", "ten": "ahead", "plain": "skip", "empty": "skip"}
+    assert done.returncode == 1
+    assert run([TEMPLATE_DRIFT, fresh, plain], cwd=tmp_path).returncode == 0
+    assert run([TEMPLATE_DRIFT, tmp_path / "missing"], cwd=tmp_path).returncode == 2
+
+
+def test_doctor_warns_about_an_old_or_missing_copy_of_the_template(tmp_path):
+    current = TEMPLATE.read_text()
+    r = repo(tmp_path, current)
+    path = {"PATH": str(tools_dir(tmp_path, True))}
+    assert "ok   AGENTS.md matches the current template" in run([DOCTOR, "--repo", r], cwd=tmp_path, env=path).stdout
+    (r / "AGENTS.md").write_text(current.replace(_marker_line(), "<!-- jstack-template: 0.1.0 -->"))
+    assert "warn AGENTS.md matches the current template: the copy is from 0.1.0" in run([DOCTOR, "--repo", r], cwd=tmp_path, env=path).stdout
+    (r / "AGENTS.md").write_text("# P\n")
+    assert "warn AGENTS.md matches the current template: AGENTS.md does not use the jstack flow" in run([DOCTOR, "--repo", r], cwd=tmp_path, env=path).stdout
+
+
+def _checkout(tmp_path, local_version, remote_tags):
+    import shutil
+    ck = tmp_path / "ck"
+    ignore = shutil.ignore_patterns("__pycache__")
+    shutil.copytree(ROOT / "skills", ck / "skills", ignore=ignore)
+    shutil.copytree(ROOT / "templates", ck / "templates")
+    (ck / "VERSION").write_text(local_version + "\n")
+    git(ck, "init", "-q", "-b", "main")
+    git(ck, "config", "user.email", "t@example.com")
+    git(ck, "config", "user.name", "T")
+    git(ck, "add", "-A")
+    git(ck, "commit", "-q", "-m", "init")
+    if remote_tags is not None:
+        bare = tmp_path / "origin.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(bare)], check=True, capture_output=True)
+        git(ck, "remote", "add", "origin", str(bare))
+        git(ck, "push", "-q", "origin", "main")
+        for tag in remote_tags:
+            git(ck, "tag", tag)
+            git(ck, "push", "-q", "origin", tag)
+    return ck
+
+
+def test_doctor_compares_the_checkout_with_the_newest_tag_when_asked(tmp_path):
+    """A machine that does not run the nightly update can sit on an old jstack with no message at all."""
+    r = repo(tmp_path)
+    path = {"PATH": str(tools_dir(tmp_path, True))}
+    (tmp_path / "a").mkdir()
+    behind = _checkout(tmp_path / "a", "0.9.3", ["v0.9.2", "v9.9.9"])
+    done = run([behind / "skills/jstack/scripts/doctor", "--repo", r, "--check-updates"], cwd=tmp_path, env=path)
+    assert "warn jstack is the newest version: this checkout is 0.9.3 and origin has 9.9.9" in done.stdout, done.stdout
+    assert done.returncode == 0, "being behind is a warning, never a failure"
+    assert "newest version" not in run([behind / "skills/jstack/scripts/doctor", "--repo", r], cwd=tmp_path, env=path).stdout
+
+
+def test_doctor_is_quiet_about_the_version_when_the_checkout_is_current_or_cannot_ask(tmp_path):
+    r = repo(tmp_path)
+    path = {"PATH": str(tools_dir(tmp_path, True))}
+    (tmp_path / "a").mkdir()
+    current = _checkout(tmp_path / "a", "0.10.0", ["v0.9.3", "v0.10.0"])      # 0.10.0 is newer than 0.9.3
+    assert "ok   jstack is the newest version: 0.10.0" in run([current / "skills/jstack/scripts/doctor", "--repo", r, "--check-updates"], cwd=tmp_path, env=path).stdout
+    (tmp_path / "b").mkdir()
+    offline = _checkout(tmp_path / "b", "0.9.3", None)
+    out = run([offline / "skills/jstack/scripts/doctor", "--repo", r, "--check-updates"], cwd=tmp_path, env=path)
+    assert "warn jstack is the newest version: could not ask origin" in out.stdout and out.returncode == 0, out.stdout

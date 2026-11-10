@@ -53,6 +53,19 @@ MUTATIONS = {
         "skills/full-send/scripts/token-lint", 'fork = git("merge-base", base, "HEAD").strip()',
         'fork = git("rev-parse", "HEAD").strip()',
         "tests/test_tools.py::test_token_lint_blocks_off_token_literals_and_suggests_the_nearest_color"),
+    "an old copy of the template is called current": (
+        "skills/jstack/scripts/template-drift", "    if mine < current:", "    if False:",
+        "tests/test_tools.py::test_template_drift_names_old_copies"),
+    "template versions are compared as text": (
+        "skills/jstack/scripts/template-drift", "return tuple(int(x) for x in found.groups()) if found else None",
+        "return tuple(found.groups()) if found else None",
+        "tests/test_tools.py::test_template_drift_names_old_copies"),
+    "the UI gate is silent when it is off": (
+        "skills/jstack/scripts/doctor", "    if has_tokens:\n        return \"warn\"", "    if False:\n        return \"warn\"",
+        "tests/test_tools.py::test_doctor_says_when_the_ui_gate_is_off"),
+    "a checkout behind origin is called current": (
+        "skills/jstack/scripts/doctor", "    if latest > mine:", "    if False:",
+        "tests/test_tools.py::test_doctor_compares_the_checkout_with_the_newest_tag_when_asked"),
     "a bot that never reviews is still waited for": (
         "skills/babysit-pr/scripts/pr-wait", "if green and (reviewed or not GATING_BOTS):", "if green and reviewed:",
         "tests/test_tools.py::test_pr_wait_ready_does_not_wait_for_bots_that_are_not_configured"),

@@ -12,7 +12,8 @@ that is not a token value:
   size     a px/rem/em value in a spacing, size, radius or font-size declaration
   font     the first family of a font-family declaration
 
-Token-definition files (`tokens.*`, `*.tokens.*`, `design-tokens.*`, or --skip) are not checked, and
+Token-definition files (`tokens.*`, `*.tokens.*`, `design-tokens.*`), test files (`__tests__/`, `*.test.*`, `*.spec.*`)
+and anything matching --skip are not checked, and
 a 1px hairline is never a violation. Existing violations in lines the change did not add never block. Each violation prints the file, line,
 literal and, for colors, the nearest token. Exceptions live in the allow file, one per line:
 `<path glob> <literal>  # <reason>`; an entry without a reason is an error.
@@ -31,7 +32,7 @@ import sys
 from pathlib import Path
 
 # Files that DEFINE tokens as CSS variables legitimately hold the literals.
-DEFAULT_SKIP = "**/tokens.*,**/*.tokens.*,**/design-tokens.*"
+DEFAULT_SKIP = "**/tokens.*,**/*.tokens.*,**/design-tokens.*,**/__tests__/**,**/*.test.*,**/*.spec.*"
 DEFAULT_PATHS = "**/*.css,**/*.scss,**/*.sass,**/*.less,**/*.tsx,**/*.jsx,**/*.vue,**/*.svelte,**/*.html"
 HEX = re.compile(r"#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})\b")
 FUNC_COLOR = re.compile(r"\b(?:rgba?|hsla?)\([^)]*\)", re.I)

@@ -2,6 +2,13 @@
 
 Format follows Keep a Changelog. Versions are tagged `vX.Y.Z`; install a tag, not `main`.
 
+## 0.9.4
+
+### Fixed
+- `token-lint` no longer checks test files (`__tests__/`, `*.test.*`, `*.spec.*`). Run over the last 40 commits of two real
+  repos with the UI paths set for the first time, it reported 10 violations and every one was inside a test (a color a test
+  asserts on, `rgb(colors.x)` in a helper). A test is not a UI change, and with the gate on those would have blocked merges.
+
 ## 0.9.3
 
 ### Added

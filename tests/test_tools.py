@@ -410,6 +410,20 @@ def test_token_lint_skips_token_definition_files_and_hairlines(tmp_path):
     assert lint(r).returncode == 1
 
 
+def test_token_lint_does_not_treat_test_files_as_ui(tmp_path):
+    """2026-11-10, run over the last 40 commits of two real repos: 10 violations, every one inside a test file (a color
+    a test asserts on, `rgb(colors.x)` in a helper). A test is not a UI change and must not block a merge."""
+    r = ui_repo(tmp_path)
+    (r / "__tests__").mkdir()
+    (r / "__tests__/panel.css").write_text(".t { color: #123456; }\n")
+    (r / "panel.test.tsx").write_text("expect(style.color).toBe('#123456'); // padding: 13px;\n")
+    (r / "panel.spec.css").write_text(".t { width: 13px; }\n")
+    commit_all(r)
+    assert lint(r).returncode == 0, lint(r).stdout
+    (r / "panel.css").write_text(".t { color: #123456; }\n")
+    assert lint(r).returncode == 1
+
+
 def test_checklist_init_starts_a_proof_that_proof_valid_accepts(tmp_path):
     r = repo(tmp_path)
     git(r, "checkout", "-q", "-b", "feat")

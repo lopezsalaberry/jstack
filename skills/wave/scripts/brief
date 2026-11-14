@@ -1,0 +1,107 @@
+#!/usr/bin/env python3
+"""brief: write the brief of one worker, so that nothing a worker needs depends on the orchestrator remembering it.
+
+  brief TICKET --goal TEXT --done-when TEXT --touches PATHS --model MODEL --effort LEVEL
+        [--stop-before-merge] [--note TEXT] [--repo PATH]
+
+Prints a brief that stands alone: the ticket, the files it may touch, the observable condition that ends it, the
+integration branch from the repo's settings, how to work (the `ticket` skill, the evidence checklist, the `check`
+gate), what to do instead of asking, and the status line to end with. When PATHS overlap the `ui_paths` setting it
+adds the design block: the tokens to read and the before and after pictures to publish.
+
+--model and --effort are required because the brief is where the choice is made: a delegate that is not told its
+model inherits the parent's. They go on the last line, on stderr, for the delegate call; the worker's text does
+not need them. --stop-before-merge is for a repo whose contract has a single integrator.
+Exit 0, or 2 on a usage error (a missing field is one: a ticket without `--done-when` is not ready to launch).
+"""
+from __future__ import annotations
+
+import argparse
+import importlib.util
+import re
+import subprocess
+import sys
+from importlib.machinery import SourceFileLoader
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+_loader = SourceFileLoader("jstack_settings", str(HERE.parents[1] / "jstack" / "scripts" / "jstack-settings"))
+settings = importlib.util.module_from_spec(importlib.util.spec_from_loader("jstack_settings", _loader))
+_loader.exec_module(settings)
+
+
+def literal_prefix(glob: str) -> str:
+    return re.split(r"[*?]", glob, maxsplit=1)[0]
+
+
+def may_be_ui(touch: str, glob: str) -> bool:
+    """True unless the two clearly cannot name the same file. When unsure the design block is included."""
+    if settings.glob_re(glob).match(touch):
+        return True
+    mine, theirs = literal_prefix(touch), literal_prefix(glob)
+    if theirs and not (mine.startswith(theirs) or theirs.startswith(mine)):
+        return False
+    suffix = glob.rsplit("*", 1)[-1]
+    last = touch.rstrip("/").rsplit("/", 1)[-1]
+    is_file = "." in last and not re.search(r"[*?]", last) and not touch.endswith("/")
+    return not (is_file and suffix.startswith(".") and not touch.endswith(suffix))
+
+
+def main(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("ticket")
+    for name in ("goal", "done-when", "touches", "model", "effort"):
+        ap.add_argument(f"--{name}", required=True)
+    ap.add_argument("--stop-before-merge", action="store_true")
+    ap.add_argument("--note", default="")
+    ap.add_argument("--repo", type=Path, default=Path.cwd())
+    args = ap.parse_args(argv)
+    empty = [n for n in ("goal", "done_when", "touches", "model", "effort") if not getattr(args, n).strip()]
+    if empty:
+        ap.error(f"empty: {', '.join(empty)}")
+    top = subprocess.run(["git", "-C", str(args.repo), "rev-parse", "--show-toplevel"], capture_output=True, text=True)
+    root = Path(top.stdout.strip()) if top.returncode == 0 else args.repo.resolve()
+    values = settings.resolve(root)
+    branch = values["integration_branch"]
+    touches = [t.strip() for t in args.touches.split(",") if t.strip()]
+    globs = [g.strip() for g in values["ui_paths"].split(",") if g.strip()]
+    ui = any(may_be_ui(t, g) for t in touches for g in globs)
+    t = args.ticket
+    lines = [
+        f"Ticket {t}: {args.goal.strip()}",
+        f"Repo: {root}. Integration branch: {branch}.",
+        f"Touches: {', '.join(touches)}. Stay inside them; if the fix needs another file, say which and why in your report.",
+        f"Done when: {args.done_when.strip()}",
+        "",
+        "How to work:",
+        f"- Follow the `ticket` skill end to end, in your own worktree and branch from origin/{branch}.",
+        "- The commands named below (`checklist-init`, `check`, `publish`) are in that skill's `scripts/` folder.",
+        f"- Start the evidence before the change: `checklist-init {t}`.",
+        f"- Before you finish, run `check {t} --pr <number>` and paste what it prints in the PR. Every line must be PASS or SKIP.",
+        ("- Do not merge. Leave the PR open and green and report READY_FOR_INTEGRATOR: this repo has one integrator."
+         if args.stop_before_merge else
+         f"- Merge the PR into {branch} when `check` is green. Do not wait for other tickets."),
+        "- Do not ask the user anything and do not start other workers. When you would ask, stop and report "
+        "BLOCKED(decision) with the options and your recommendation first.",
+        "- A budget that runs out (quota, rate limit, time, context) is not a failure: push a WIP commit, write "
+        "RUNSTATE.md and report WAITING with the condition that lets someone resume.",
+    ]
+    if ui:
+        lines.append(
+            f"- Design: this ticket touches UI files (`ui_paths`: {values['ui_paths']}). Read {values['design_tokens']} and the "
+            "project's components before the first edit and use only their tokens and components. If the design system lacks "
+            "what the ticket needs, report BLOCKED(decision) naming the missing piece; do not improvise it in code. Capture "
+            f"`before-<state>.png` and `after-<state>.png` for each screen that changes and run `publish {t} --pr <number>`.")
+    if args.note.strip():
+        lines.append(f"- {args.note.strip()}")
+    lines += ["",
+              "End with one status line: INTEGRATED <sha>, READY_FOR_INTEGRATOR, WAITING <condition> or "
+              "BLOCKED(env|task|decision) <reason and evidence>. Then say what you did not verify."]
+    print("\n".join(lines))
+    print(f"brief: start this worker on {args.model.strip()} at effort {args.effort.strip()}"
+          + (" (UI ticket: the design block is included)" if ui else ""), file=sys.stderr)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

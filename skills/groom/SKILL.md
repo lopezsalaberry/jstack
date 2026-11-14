@@ -33,5 +33,5 @@ Run by hand, when the operator asks. Nothing here is scheduled.
    first. Put every decision the operator owes, and every ESCALATE, in ONE question, asked with the
    "Ask the user" action in `jstack`.
 6. **Apply** every change to the tracker only after the operator says yes: cancels, folds, parks, and
-   the `Touches:` and `Done when:` text you wrote in step 3. The chosen tickets go to `fanout`, which
+   the `Touches:` and `Done when:` text you wrote in step 3. The chosen tickets go to `wave`, which
    decides what runs together.

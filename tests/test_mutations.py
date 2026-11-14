@@ -15,86 +15,105 @@ ROOT = Path(__file__).resolve().parent.parent
 # (file, text to replace, wrong replacement, the test that must catch it)
 MUTATIONS = {
     "an exhausted provider is reported as available": (
-        "skills/quota-gate/scripts/quota-probe", "sys.exit(0 if max(mine) > 0 else 1)", "sys.exit(0)",
+        "skills/wave/scripts/quota-probe", "sys.exit(0 if max(mine) > 0 else 1)", "sys.exit(0)",
         "tests/test_tools.py::test_quota_probe_exit_codes_and_unknown_is_not_exhausted"),
     "a refusal mark is ignored": (
-        "skills/quota-gate/scripts/quota-probe", "if args.provider and args.provider in live_marks(now):",
-        "if False:",
+        "skills/wave/scripts/quota-probe", "if args.provider and args.provider in live_marks(now):", "if False:",
         "tests/test_tools.py::test_a_refusal_marks_the_provider_and_every_later_worker_skips_it"),
+    "the shipped probe ignores the configured one": (
+        "skills/wave/scripts/quota-probe", "        if command:\n            reading = ", "        if False:\n            reading = ",
+        "tests/test_tools.py::test_the_shipped_probe_hands_the_call_to_the_configured_one"),
+    "the shipped probe hands off again after a hand-off": (
+        "skills/wave/scripts/quota-probe", 'if os.environ.get("JSTACK_QUOTA_HANDOFF"):', "if False:",
+        "tests/test_tools.py::test_the_shipped_probe_hands_the_call_to_the_configured_one"),
+    "a reset moment is replaced by an hour": (
+        "skills/wave/scripts/quota-probe", "expires = parse_until(args.until, now)", "expires = now + 3600",
+        "tests/test_tools.py::test_until_marks_a_provider_for_as_long_as_its_refusal_lasts"),
     "the environment no longer overrides AGENTS.md": (
         "skills/jstack/scripts/jstack-settings", 'if f"JSTACK_{key.upper()}" in env:', "if False:",
         "tests/test_tools.py::test_settings_precedence_is_env_then_agents_md_then_default"),
+    "the operator's own settings are ignored": (
+        "skills/jstack/scripts/jstack-settings", "        elif key in mine:", "        elif False:",
+        "tests/test_tools.py::test_the_operators_own_settings_sit_between_the_repo_and_the_default"),
     "a checklist that records no patch is accepted": (
-        "skills/evidence/scripts/proof-valid", "if recorded in UNANCHORED and now != recorded:", "if False:",
+        "skills/ticket/scripts/proof-valid", "if recorded in UNANCHORED and now != recorded:", "if False:",
         "tests/test_tools.py::test_a_checklist_started_before_the_change_is_never_called_valid"),
     "a stamp keeps the old patch id": (
-        "skills/evidence/scripts/proof-valid", '("Patch-id", patch)', '("Patch-id", "empty")',
+        "skills/ticket/scripts/proof-valid", '("Patch-id", patch)', '("Patch-id", "empty")',
         "tests/test_tools.py::test_a_checklist_started_before_the_change_is_never_called_valid"),
-    "the shipped probe ignores the configured one": (
-        "skills/quota-gate/scripts/quota-probe", "        if command:\n            os.execvpe", "        if False:\n            os.execvpe",
-        "tests/test_tools.py::test_the_shipped_probe_hands_the_call_to_the_configured_one"),
-    "the shipped probe hands off again after a hand-off": (
-        "skills/quota-gate/scripts/quota-probe", 'if os.environ.get("JSTACK_QUOTA_HANDOFF"):', "if False:",
-        "tests/test_tools.py::test_the_shipped_probe_hands_the_call_to_the_configured_one"),
     "a changed patch is still called valid": (
-        "skills/evidence/scripts/proof-valid", "if recorded == now:", "if True:",
+        "skills/ticket/scripts/proof-valid", "if recorded == now:", "if True:",
         "tests/test_tools.py::test_proof_follows_the_patch_not_the_commit"),
     "a rebase invalidates the proof": (
-        "skills/evidence/scripts/proof-valid", 'fork = git("merge-base", base, ref).strip()',
+        "skills/ticket/scripts/proof-valid", 'fork = git("merge-base", base, ref).strip()',
         'fork = git("rev-parse", base).strip()',
         "tests/test_tools.py::test_proof_follows_the_patch_not_the_commit"),
-    "the trail rewrites history": (
-        "skills/jstack/scripts/trail", 'with path.open("a") as handle:', 'with path.open("w") as handle:',
-        "tests/test_tools.py::test_trail_only_appends_and_neutralizes_formulas"),
     "a violation does not block": (
-        "skills/full-send/scripts/token-lint", "    if found:\n        print(f\"token-lint: {found}", "    if False:\n        print(f\"token-lint: {found}",
+        "skills/ticket/scripts/token-lint", "    if found:\n        print(f\"token-lint: {found}", "    if False:\n        print(f\"token-lint: {found}",
         "tests/test_tools.py::test_token_lint_blocks_off_token_literals_and_suggests_the_nearest_color"),
     "committed changes are not looked at": (
-        "skills/full-send/scripts/token-lint", 'fork = git("merge-base", base, "HEAD").strip()',
+        "skills/ticket/scripts/token-lint", 'fork = git("merge-base", base, "HEAD").strip()',
         'fork = git("rev-parse", "HEAD").strip()',
         "tests/test_tools.py::test_token_lint_blocks_off_token_literals_and_suggests_the_nearest_color"),
-    "an old copy of the template is called current": (
-        "skills/jstack/scripts/template-drift", "    if mine < current:", "    if False:",
-        "tests/test_tools.py::test_template_drift_names_old_copies"),
-    "template versions are compared as text": (
-        "skills/jstack/scripts/template-drift", "return tuple(int(x) for x in found.groups()) if found else None",
-        "return tuple(found.groups()) if found else None",
-        "tests/test_tools.py::test_template_drift_names_old_copies"),
+    "test files are linted as UI": (
+        "skills/ticket/scripts/token-lint", ',**/__tests__/**,**/*.test.*,**/*.spec.*"', '"',
+        "tests/test_tools.py::test_token_lint_does_not_treat_test_files_as_ui"),
+    "an edited card is called current": (
+        "skills/jstack/scripts/doctor", '        if found and " ".join(found.group(0).split()) == " ".join(shipped.group(0).split()):',
+        "        if found:",
+        "tests/test_tools.py::test_doctor_says_when_no_file_an_agent_reads_has_the_current_card"),
     "the UI gate is silent when it is off": (
         "skills/jstack/scripts/doctor", "    if has_tokens:\n        return \"warn\"", "    if False:\n        return \"warn\"",
         "tests/test_tools.py::test_doctor_says_when_the_ui_gate_is_off"),
     "a checkout behind origin is called current": (
         "skills/jstack/scripts/doctor", "    if latest > mine:", "    if False:",
         "tests/test_tools.py::test_doctor_compares_the_checkout_with_the_newest_tag_when_asked"),
-    "test files are linted as UI": (
-        "skills/full-send/scripts/token-lint", ',**/__tests__/**,**/*.test.*,**/*.spec.*"', '"',
-        "tests/test_tools.py::test_token_lint_does_not_treat_test_files_as_ui"),
-    "the operator's own settings are ignored": (
-        "skills/jstack/scripts/jstack-settings", "        elif key in mine:", "        elif False:",
-        "tests/test_tools.py::test_the_operators_own_settings_sit_between_the_repo_and_the_default"),
-    "a reset moment is replaced by an hour": (
-        "skills/quota-gate/scripts/quota-probe", "expires = parse_until(args.until, now)", "expires = now + 3600",
-        "tests/test_tools.py::test_until_marks_a_provider_for_as_long_as_its_refusal_lasts"),
-    "a mark months away is accepted": (
-        "skills/quota-gate/scripts/quota-probe", "    if when > now + MAX_UNTIL_DAYS * 86400:", "    if False:",
-        "tests/test_tools.py::test_until_marks_a_provider_for_as_long_as_its_refusal_lasts"),
-    "publishing a second ticket drops the first one's pictures": (
-        "skills/evidence/scripts/publish", '            git(root, "read-tree", parent, env=env)', "            pass",
-        "tests/test_tools.py::test_publish_shows_the_screenshots_from_a_branch_that_is_not_the_change"),
+    "a later publish drops the earlier pictures": (
+        "skills/ticket/scripts/publish", '            git(root, "read-tree", parent, env=env)', "            pass",
+        "tests/test_tools.py::test_publish_builds_a_before_and_after_table_in_a_ref_nobody_fetches"),
+    "the pictures go to a branch every worker fetches": (
+        "skills/ticket/scripts/publish", 'f"refs/jstack-evidence/{args.ticket}"', 'f"refs/heads/jstack-evidence-{args.ticket}"',
+        "tests/test_tools.py::test_publish_builds_a_before_and_after_table_in_a_ref_nobody_fetches"),
+    "the whole folder is published": (
+        "skills/ticket/scripts/publish", "        if len(files) > args.max_files or large:", "        if False:",
+        "tests/test_tools.py::test_publish_refuses_the_folder_a_big_file_and_an_origin_nobody_can_open"),
+    "a PASS that nobody ran passes the gate": (
+        "skills/ticket/scripts/check", '        weak = [t for t, result, level in targets if "PASS" in result and not re.search(r"[45]", level)]',
+        "        weak = []",
+        "tests/test_tools.py::test_check_passes_a_proven_change_and_names_what_is_missing"),
+    "a change edited after its proof passes the gate": (
+        "skills/ticket/scripts/check", "if valid.returncode != 0 else", "if False else",
+        "tests/test_tools.py::test_check_fails_an_edited_change_an_off_token_color_and_a_branch_that_is_not_ready"),
+    "work on the integration branch passes the gate": (
+        "skills/ticket/scripts/check", 'say("FAIL" if branch == target else "PASS", "branch",', 'say("PASS", "branch",',
+        "tests/test_tools.py::test_check_fails_an_edited_change_an_off_token_color_and_a_branch_that_is_not_ready"),
     "a status badge counts as a screenshot": (
-        "skills/evidence/scripts/pr-evidence-check", "        if NOT_EVIDENCE.search(line):", "        if False:",
-        "tests/test_tools.py::test_a_ui_change_needs_a_screenshot_the_reviewer_can_open"),
+        "skills/ticket/scripts/check", "for line in text.splitlines() if not NOT_A_SCREENSHOT.search(line)", "for line in text.splitlines() if True",
+        "tests/test_tools.py::test_check_reads_the_pull_request_head_screenshot_review_ci_and_mergeability"),
+    "a verdict on an older patch still counts": (
+        "skills/ticket/scripts/check", 'run([sys.executable, str(HERE / "proof-valid"), "--patch-id", p, "--base", base], root).returncode == 1]',
+        'False]',
+        "tests/test_tools.py::test_check_reads_the_pull_request_head_screenshot_review_ci_and_mergeability"),
+    "a failed CI check passes the gate": (
+        "skills/ticket/scripts/check", "            if red:", "            if False:",
+        "tests/test_tools.py::test_check_reads_the_pull_request_head_screenshot_review_ci_and_mergeability"),
     "a change with no UI file still needs a screenshot": (
-        "skills/evidence/scripts/pr-evidence-check", "    if not ui_files:", "    if False:",
-        "tests/test_tools.py::test_the_screenshot_check_only_applies_to_ui_changes_and_when_the_gate_is_on"),
+        "skills/ticket/scripts/check", '            if not ui:\n                say("SKIP", "screenshot"', '            if False:\n                say("SKIP", "screenshot"',
+        "tests/test_tools.py::test_check_asks_nothing_about_screens_of_a_change_with_no_ui_file"),
+    "a brief is written without a model": (
+        "skills/wave/scripts/brief", 'ap.add_argument(f"--{name}", required=True)', 'ap.add_argument(f"--{name}", default="x")',
+        "tests/test_tools.py::test_brief_writes_a_brief_that_stands_alone_and_will_not_run_without_a_model"),
+    "a UI brief has no design block": (
+        "skills/wave/scripts/brief", "    if ui:\n        lines.append(", "    if False:\n        lines.append(",
+        "tests/test_tools.py::test_brief_adds_the_design_block_when_the_ticket_may_touch_ui"),
     "a bot that never reviews is still waited for": (
-        "skills/babysit-pr/scripts/pr-wait", "if green and (reviewed or not GATING_BOTS):", "if green and reviewed:",
+        "extras/babysit-pr/scripts/pr-wait", "if green and (reviewed or not GATING_BOTS):", "if green and reviewed:",
         "tests/test_tools.py::test_pr_wait_ready_does_not_wait_for_bots_that_are_not_configured"),
 }
 
 
 def copy_repo(dest: Path) -> Path:
-    shutil.copytree(ROOT, dest, ignore=shutil.ignore_patterns(".git", "__pycache__", ".pytest_cache", "*.pyc"))
+    shutil.copytree(ROOT, dest, ignore=shutil.ignore_patterns(".git", "__pycache__", ".pytest_cache", "*.pyc", ".artifacts"))
     return dest
 
 

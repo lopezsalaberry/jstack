@@ -6,7 +6,7 @@ description: Monitor a pull request through review and CI. Use when the user ask
 # Babysit PR
 
 Many repos have AI review bots. They are helpful, even if they are not always
-right. Which ones gate the merge is the `review_bots` setting.
+right. Which ones gate the merge is what you pass to `--bots`.
 
 ## Fix attempts
 
@@ -17,8 +17,8 @@ comment replies, and dismissals with a written reason do not count.
 Keep a ledger line in the PR description, `Fix attempts: <n>`, and update it
 before each fix-attempt push, so a fresh thread sees the count. It is a count,
 not a cap. When the same check keeps failing,
-apply `iterate` (look at the shape of the failures, test the shared premise,
-pivot). Stop only by its stop rules, with a typed `BLOCKED`.
+apply "When it does not go green" in `ticket` (look at what the failures share, test the
+idea directly, change approach). Stop only by its stop rules, with a typed `BLOCKED`.
 
 ## Waiting
 
@@ -61,8 +61,8 @@ PR closed), and 2 on bad input.
 - `green`: required checks only.
 - `any-change`: exit on the first event.
 
-`--bots` defaults to the `review_bots` setting and `--advisory-bots` to `advisory_bots`
-(see `jstack`; both are comma lists of logins). Advisory bots are reported, never waited for.
+`--bots` and `--advisory-bots` are comma lists of logins (their defaults are the environment
+variables `JSTACK_REVIEW_BOTS` and `JSTACK_ADVISORY_BOTS`). Advisory bots are reported, never waited for.
 
 Run it where a long command keeps running and each output line wakes you (the harness's
 monitor, see `jstack`), or as one long command; it ends on its own. Start it again after
@@ -106,14 +106,14 @@ paste their text into a shell command. Put a reply body in a file and post it fr
 
 Only act on checks and comments newer than the latest push. Verify every bot
 finding against the source before changing code. What is allowed to block a merge is
-defined once, in the "What blocks" part of the `full-send` merge gate. Fix real findings and CI
+defined once, in step 5 of `ticket`. Fix real findings and CI
 failures, distinguish repository failures from infrastructure flakes, and reply
 with a written reason when dismissing false positives.
 
 If the repo keeps rules for a review bot in a file (many bots read one from the repo),
 read them before you reply to that bot's finding. Its findings cite them.
 
-Bots in `advisory_bots` are advisory. Treat their findings like any other finding, but
+Bots passed to `--advisory-bots` are advisory. Treat their findings like any other finding, but
 never wait for them and never hold a merge for them.
 
 If a review bot leaves feedback you believe is not worth addressing, reply with

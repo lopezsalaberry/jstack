@@ -21,17 +21,17 @@ Marks: when starting a model fails for quota, rate limit, authentication or unav
 source says, so no other worker retries a provider that just refused. When the refusal names when the
 provider answers again (a monthly cap, "try again at 13:50"), pass that moment as --until WHEN, an ISO
 date or date-time in local time (2026-12-01, 2026-11-16T13:50) or epoch seconds, so the mark lasts as long
-as the refusal does; a past time or one more than 45 days away is a usage error. --clear NAME removes the
-mark. Marks live in $JSTACK_QUOTA_MARKS or ~/.config/jstack/quota-marks.txt (per machine, not
+as the refusal does; a past time is a usage error. --clear NAME removes the mark. Marks live in $JSTACK_QUOTA_MARKS or ~/.config/jstack/quota-marks.txt (per machine, not
 per repo: quota belongs to the account), one line `<provider> <expires epoch> <reason>`.
 
 Default source: $JSTACK_QUOTA_SOURCE, then ./.jstack/quota.txt, then ~/.config/jstack/quota.txt.
 Default max age: $JSTACK_QUOTA_MAX_AGE_MINUTES or 30.
 
-Hand-off: this script is only the default `quota_probe`. When the `quota_probe` setting (environment
-JSTACK_QUOTA_PROBE or the repo's AGENTS.md) names another command, any call without --source runs that command
-instead, so it makes no difference which of the two a caller reaches. A caller that ran this file directly used
-to read "no quota source configured" as "unknown" for a provider the configured probe knew to be at 0%.
+Hand-off: marks are always handled here, so this is the one command callers run. A reading (a call with
+--provider, or with no arguments) is handed to the command of the `quota_probe` setting when it names another
+one and no --source was given: that command only has to answer `--provider NAME` with exit 0, 1 or 2. A caller
+that ran this file directly used to read "no quota source configured" as "unknown" for a provider the configured
+probe knew to be at 0%.
 
 A bad argument exits 64. In this contract exit 2 means unknown, and a usage error must never look like it.
 """
@@ -72,9 +72,6 @@ def parse(path: Path) -> list[tuple[str, str, float]]:
     return rows
 
 
-MAX_UNTIL_DAYS = 45
-
-
 def parse_until(text: str, now: float) -> float:
     """Epoch seconds for --until: ISO date or date-time in local time, or epoch seconds. ValueError when unusable."""
     text = text.strip()
@@ -87,8 +84,6 @@ def parse_until(text: str, now: float) -> float:
             raise ValueError(f"--until {text!r} is not an ISO date, an ISO date-time or epoch seconds") from None
     if when <= now:
         raise ValueError(f"--until {text!r} is already past")
-    if when > now + MAX_UNTIL_DAYS * 86400:
-        raise ValueError(f"--until {text!r} is more than {MAX_UNTIL_DAYS} days away; a mark that long hides a provider that may be back")
     return when
 
 
@@ -156,10 +151,6 @@ def main() -> None:
                     default=float(os.environ.get("JSTACK_QUOTA_MAX_AGE_MINUTES", "30")))
     args = ap.parse_args()
     now = time.time()
-    if not args.source:
-        command = configured_probe()
-        if command:
-            os.execvpe(command[0], command + sys.argv[1:], {**os.environ, "JSTACK_QUOTA_HANDOFF": "1"})
     if args.mark_exhausted or args.clear:
         marks = live_marks(now)
         if args.mark_exhausted:
@@ -184,6 +175,11 @@ def main() -> None:
     if args.provider and args.provider in live_marks(now):
         print(f"quota-probe: {args.provider} is marked exhausted ({live_marks(now)[args.provider][1]})", file=sys.stderr)
         sys.exit(1)
+    if not args.source:
+        command = configured_probe()
+        if command:
+            reading = ["--provider", args.provider] if args.provider else []
+            os.execvpe(command[0], command + reading, {**os.environ, "JSTACK_QUOTA_HANDOFF": "1"})
     source = find_source(args.source)
     if source is None:
         print("quota-probe: unknown (no quota source configured)", file=sys.stderr)

@@ -13,7 +13,7 @@ CREDIT_ONLY = {"README.md", "NOTICE", "LICENSE"}
 OTHER_PROJECTS = re.compile(r"\b(tstack|pstack|rstack|t3dotgg|backnotprop|michaelshimeles|poteto|cursor/plugins)\b", re.I)
 errors = []
 
-skills = {p.parent.name: p for p in (ROOT / "skills").glob("*/SKILL.md")}
+skills = {p.parent.name: p for d in ("skills", "extras") for p in (ROOT / d).glob("*/SKILL.md")}
 for name, p in skills.items():
     s = p.read_text()
     m = re.match(r"---\n(.*?)\n---\n", s, re.S)
@@ -30,7 +30,7 @@ for name, p in skills.items():
         if not ref.startswith("verify"):
             errors.append(f"{p}: references a skill this repo does not ship: {ref!r}")
 
-SCOPE = [*ROOT.glob("skills/**/*"), *ROOT.glob("docs/**/*"), *ROOT.glob("templates/**/*"),
+SCOPE = [*ROOT.glob("skills/**/*"), *ROOT.glob("extras/**/*"), *ROOT.glob("docs/**/*"), *ROOT.glob("templates/**/*"),
          *ROOT.glob("tools/**/*"), ROOT / "AGENTS.md", ROOT / "install.sh", ROOT / "Makefile"]
 for path in sorted(set(SCOPE)):
     if not path.is_file() or path.name in CREDIT_ONLY or "__pycache__" in path.parts or path == Path(__file__).resolve():

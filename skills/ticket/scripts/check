@@ -1,0 +1,213 @@
+#!/usr/bin/env python3
+"""check: the merge gate as one command. Run it before you merge or hand a ticket over, and paste what it prints.
+
+  check [TICKET] [--pr N] [--repo PATH] [--base REF]
+
+One line per rule: PASS, FAIL or SKIP (the rule does not apply, and why). Exit 0 when nothing fails, 1 otherwise,
+2 on a usage error. Whoever validates the ticket later runs the same command on the same head.
+
+Always:
+  branch       the work is on its own branch, not the integration branch
+  clean tree   no uncommitted change to a tracked file
+  up to date   the branch contains the tip of BASE (default origin/<integration_branch>, fetched first)
+  proof        .artifacts/<ticket>/checklist.md records this patch (`proof-valid`), has a row per target,
+               no FAIL row and no PASS below level 4
+  design       a change to `ui_paths` files passes `design_check`, or the shipped token-lint when it is empty
+With --pr N (needs `gh`):
+  head         the PR's head is this HEAD
+  screenshot   a UI change shows a picture or video a reader can open, and its "Not shown" line is written
+  review       an independent verdict covers this patch when `verify_mode` asks for one, and none says CHANGES or FAIL
+  ci           no check failed and none is still running
+  mergeable    no conflict with the base, no review requesting changes
+
+TICKET may be left out when `.artifacts/` holds exactly one checklist. This is what a command can check. It does
+not know whether a change is high-risk, whether a screenshot shows the right screen, or whether a red CI job ever
+ran a step: the `ticket` and `review` skills say what to do about those.
+"""
+from __future__ import annotations
+
+import argparse
+import importlib.util
+import json
+import re
+import shlex
+import subprocess
+import sys
+from importlib.machinery import SourceFileLoader
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+_loader = SourceFileLoader("jstack_settings", str(HERE.parents[1] / "jstack" / "scripts" / "jstack-settings"))
+settings = importlib.util.module_from_spec(importlib.util.spec_from_loader("jstack_settings", _loader))
+_loader.exec_module(settings)
+
+MEDIA = r"(?:png|jpe?g|gif|webp|mp4|mov|webm)"
+PICTURE = [
+    re.compile(r"!\[[^\]]*\]\(\s*<?https?://[^)\s>]+"),                           # ![alt](https://...)
+    re.compile(r"<img\b[^>]*\bsrc=[\"']https?://[^\"']+", re.I),                 # <img src="https://...">
+    re.compile(r"https://github\.com/user-attachments/\S+"),                      # a file dropped into the PR box
+    re.compile(rf"\]\(\s*<?https?://[^)\s>]+\.{MEDIA}(?:\?[^)\s>]*)?\)", re.I),   # [video](https://.../x.mp4)
+]
+NOT_A_SCREENSHOT = re.compile(r"vercel\.com/|vercel\.sh|shields\.io|/badge(?:\.svg|/)|avatars\.githubusercontent\.com|"
+                              r"codecov\.io|badgen\.net", re.I)
+BAD_CI = {"FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "ERROR", "STARTUP_FAILURE"}
+GOOD_VERDICT = {"PASS", "PASS+NOTES", "APPROVE"}
+
+
+def run(cmd: list[str], cwd: Path) -> subprocess.CompletedProcess:
+    return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+
+
+def pictures(text: str) -> list[str]:
+    return [m.group(0) for line in text.splitlines() if not NOT_A_SCREENSHOT.search(line)
+            for pattern in PICTURE for m in pattern.finditer(line)]
+
+
+def rows(checklist: str) -> list[tuple[str, str, str]]:
+    """(target, result, level) of every filled row of the evidence table."""
+    found = []
+    for line in checklist.splitlines():
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if not line.lstrip().startswith("|") or len(cells) < 3 or set(cells[0]) <= {"-", " ", ":"}:
+            continue
+        if cells[0] == "Target" or cells[0].startswith("<"):
+            continue
+        found.append((cells[0], cells[1].upper(), cells[2]))
+    return found
+
+
+def find_checklist(root: Path, ticket: str | None) -> tuple[Path | None, str]:
+    if ticket:
+        path = root / ".artifacts" / ticket / "checklist.md"
+        return (path, "") if path.is_file() else (None, f"no {path.relative_to(root)}: run `checklist-init {ticket}`")
+    found = sorted((root / ".artifacts").glob("*/checklist.md"))
+    if len(found) == 1:
+        return found[0], ""
+    return None, ("no checklist under .artifacts/: run `checklist-init <ticket>`" if not found
+                  else f"{len(found)} checklists under .artifacts/: name the ticket")
+
+
+def main(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("ticket", nargs="?")
+    ap.add_argument("--pr")
+    ap.add_argument("--repo", type=Path, default=Path.cwd())
+    ap.add_argument("--base")
+    args = ap.parse_args(argv)
+    top = run(["git", "rev-parse", "--show-toplevel"], args.repo)
+    if top.returncode != 0:
+        print(f"check: {args.repo} is not a git work tree", file=sys.stderr)
+        return 2
+    root = Path(top.stdout.strip())
+    git = lambda *a: run(["git", *a], root)
+    values = settings.resolve(root)
+    target = values["integration_branch"]
+    base = args.base or f"origin/{target}"
+    out: list[tuple[str, str, str]] = []
+    say = lambda level, name, detail="": out.append((level, name, detail))
+
+    branch = git("branch", "--show-current").stdout.strip()
+    say("FAIL" if branch == target else "PASS", "branch",
+        f"you are on {target}, the integration branch: move the work to its own branch" if branch == target else branch or "detached HEAD")
+    dirty = git("status", "--porcelain", "--untracked-files=no").stdout.splitlines()
+    say("FAIL" if dirty else "PASS", "clean tree", f"{len(dirty)} tracked file(s) with uncommitted changes, for example {dirty[0][3:]}" if dirty else "")
+    if not args.base:
+        git("fetch", "-q", "origin", target)  # best effort: without a network the last fetched tip is used
+    if git("rev-parse", "--verify", "-q", f"{base}^{{commit}}").returncode != 0:
+        say("FAIL", "up to date", f"{base} does not exist here; fetch it or pass --base")
+        changed = []
+    else:
+        current = git("merge-base", "--is-ancestor", base, "HEAD").returncode == 0
+        say("PASS" if current else "FAIL", "up to date", "" if current else f"{base} has moved: rebase onto it and prove the change again")
+        changed = [f for f in git("diff", "--name-only", git("merge-base", base, "HEAD").stdout.strip(), "HEAD").stdout.splitlines() if f]
+
+    checklist, why = find_checklist(root, args.ticket)
+    if checklist is None:
+        say("FAIL", "proof", why)
+    else:
+        valid = run([sys.executable, str(HERE / "proof-valid"), "--checklist", str(checklist), "--base", base], root)
+        targets = rows(checklist.read_text())
+        failed = [t for t, result, _ in targets if "FAIL" in result]
+        weak = [t for t, result, level in targets if "PASS" in result and not re.search(r"[45]", level)]
+        problem = (("the patch changed since the proof was recorded: prove it again, then `proof-valid --stamp`" if valid.returncode == 1 else
+                    "the checklist records no patch: run `proof-valid --stamp` once the proof is final") if valid.returncode != 0 else
+                   "the checklist has no filled row: one row per thing the ticket asks for" if not targets else
+                   f"{len(failed)} target(s) FAIL, for example: {failed[0]}" if failed else
+                   f"{len(weak)} PASS below level 4 (not run), for example: {weak[0]}" if weak else "")
+        say("FAIL" if problem else "PASS", "proof", problem or f"{len(targets)} target(s), {checklist.relative_to(root)}")
+
+    ui = settings.ui_files(values, changed)
+    if not values["ui_paths"].strip():
+        say("SKIP", "design", "`ui_paths` is empty, so no change counts as a UI change")
+    elif not ui:
+        say("SKIP", "design", "no changed file matches `ui_paths`")
+    else:
+        command = (shlex.split(values["design_check"]) if values["design_check"].strip() else
+                   [sys.executable, str(HERE / "token-lint"), "--tokens", values["design_tokens"], "--paths", values["ui_paths"], "--base", base])
+        try:
+            done = run(command, root)
+            ok, detail = done.returncode == 0, " | ".join((done.stdout + done.stderr).strip().splitlines()[:3])
+        except OSError as error:
+            ok, detail = False, f"cannot run {command[0]}: {error}"
+        say("PASS" if ok else "FAIL", "design", f"{len(ui)} UI file(s)" if ok else detail)
+
+    if not args.pr:
+        say("SKIP", "pull request", "pass --pr N to check the PR's head, screenshot, review, CI and mergeability")
+    else:
+        view = run(["gh", "pr", "view", args.pr, "--json", "body,comments,statusCheckRollup,mergeable,reviewDecision,headRefOid"], root)
+        if view.returncode != 0:
+            say("FAIL", "pull request", f"gh pr view {args.pr} failed: {view.stderr.strip() or 'no output'}")
+        else:
+            pr = json.loads(view.stdout)
+            body = pr.get("body") or ""
+            everything = body + "\n" + "\n".join(c.get("body", "") for c in pr.get("comments") or [])
+            head = git("rev-parse", "HEAD").stdout.strip()
+            same = pr.get("headRefOid") == head
+            say("PASS" if same else "FAIL", "head", "" if same else f"the PR is at {str(pr.get('headRefOid'))[:10]}, this checkout at {head[:10]}: push or pull")
+            if not ui:
+                say("SKIP", "screenshot", "not a UI change")
+            elif not pictures(everything):
+                say("FAIL", "screenshot", "a UI change and the PR shows no picture. A path under .artifacts/ is not one: run `publish <ticket> --pr <number>`")
+            elif re.search(r"\*\*Not shown:\*\*\s*TODO", body):
+                say("FAIL", "screenshot", "the Evidence block still says TODO under \"Not shown\": say what the proof does not cover")
+            else:
+                say("PASS", "screenshot", f"{len(pictures(everything))} shown")
+            verdicts = re.findall(r"(?m)^Review:.*?\bverdict\s+([A-Z+]+)(?:.*?\bpatch\s+([0-9a-f]{7,40}))?", body)
+            needed = values["verify_mode"] != "off" and (bool(ui) or values["verify_mode"] == "always")
+            bad = [v for v, _ in verdicts if v not in GOOD_VERDICT]
+            stale = [p for v, p in verdicts if v in GOOD_VERDICT and p
+                     and run([sys.executable, str(HERE / "proof-valid"), "--patch-id", p, "--base", base], root).returncode == 1]
+            if bad:
+                say("FAIL", "review", f"a `Review:` line says {bad[0]}")
+            elif stale:
+                say("FAIL", "review", "the verdict covers an older patch: ask for a fresh one")
+            elif verdicts:
+                say("PASS", "review", f"{len(verdicts)} verdict line(s)")
+            elif needed:
+                say("FAIL", "review", "this change needs an independent verdict (`verify_mode`) and the PR has no `Review:` line: see the `review` skill")
+            else:
+                say("SKIP", "review", "`verify_mode` does not ask for one here; a high-risk change still needs it (see `review`)")
+            checks = pr.get("statusCheckRollup") or []
+            name = lambda c: c.get("name") or c.get("context") or "?"
+            red = [name(c) for c in checks if (c.get("conclusion") or c.get("state") or "").upper() in BAD_CI]
+            running = [name(c) for c in checks if (c.get("status") or "").upper() not in ("", "COMPLETED")
+                       or (c.get("state") or "").upper() in ("PENDING", "EXPECTED")]
+            if red:
+                say("FAIL", "ci", f"failed: {', '.join(red[:4])}")
+            elif running:
+                say("FAIL", "ci", f"still running: {', '.join(running[:4])}. Wait for it")
+            else:
+                say("PASS" if checks else "SKIP", "ci", f"{len(checks)} check(s) green" if checks else "the PR has no checks")
+            blockers = [text for flag, text in ((pr.get("mergeable") == "CONFLICTING", "conflicts with the base"),
+                                                (pr.get("reviewDecision") == "CHANGES_REQUESTED", "a review requests changes")) if flag]
+            say("FAIL" if blockers else "PASS", "mergeable", "; ".join(blockers))
+
+    for level, name, detail in out:
+        print(f"{level:4} {name}" + (f": {detail}" if detail else ""))
+    failing = sum(level == "FAIL" for level, _, _ in out)
+    print(f"check: {failing} failing" if failing else f"check: ok ({sum(l == 'PASS' for l, _, _ in out)} pass, {sum(l == 'SKIP' for l, _, _ in out)} skipped)")
+    return 1 if failing else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

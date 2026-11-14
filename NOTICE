@@ -27,6 +27,13 @@ cursor/plugins (pstack) @ 2776ddd2355d6d6c8747d3964600f28daf62f049
   evidence/proof-valid (a verdict that only a non-author gives, and a proof that follows the patch id,
   from its shipping playbook), jstack/trail (an append-only decision log, from show-me-your-work).
 
+1.0.0 folds the skills named above into fewer: ticket (from full-send, file-pr, ticket-start, prove-it,
+evidence and iterate), review (from cross-review) and wave (from fanout, quota-gate and wrap-up). The credits
+above apply to the text that moved. New in 1.0.0: the Evidence section of a pull request (a Before / After
+table, "Not shown", "Who did the work") follows the pull requests of pingdotgg/t3code as read on 2026-11-14
+(no text copied), and wave's "you run the program, not the code", fresh workers and accounting for every worker
+follow the Orchestrate playbook of cursor/plugins (pstack) as ported in michael-denyer/pstack-claude @ a12b047.
+
 ================================================================================
 t3dotgg/tstack license
 ================================================================================

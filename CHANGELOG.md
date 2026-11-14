@@ -2,6 +2,47 @@
 
 Format follows Keep a Changelog. Versions are tagged `vX.Y.Z`; install a tag, not `main`.
 
+## 1.0.0
+
+The same premises with a third of the text. Measured before this: in 143 sessions, the tools that are one command were
+used (`checklist-init` in 74, `proof-valid` in 64) and the rules that were only prose mostly were not (`RUNSTATE.md` in
+34%, `wrap-up` in 4 sessions, `iterate` in 2, the trail in 1); four skills were never loaded; the skills had grown from
+8,600 to 13,200 words in eight days. So each rule moved to where it is followed: a script when a command can check it, a
+short card when every session must know it, a skill for the rest.
+
+### Added
+- `ticket/scripts/check`: the merge gate as one command (branch, clean tree, up to date, proof, design, and with `--pr` the
+  PR's head, screenshot, review verdict, CI and mergeability). The worker pastes its output; the orchestrator reruns it.
+- `wave/scripts/brief`: writes a worker's brief from the ticket and the repo's settings, adds the design block for a UI
+  ticket, and does not run without `--model` and `--effort`.
+- The rules card: eight rules at the top of `templates/AGENTS.md`. `install.sh --card FILE` writes or replaces it in a
+  repo's `AGENTS.md` or in the file a harness loads for every repo, so one copy can serve a machine. `doctor` checks it.
+- `install.sh --extras` links the skills in `extras/`.
+- `tests/test_budget.py`: the skills and the card have a word budget.
+
+### Changed
+- Seventeen skills became five. `ticket` holds what `ticket-start`, `full-send`, `file-pr`, `prove-it`, `evidence` and
+  `iterate` held; `review` is `cross-review`; `wave` holds `fanout`, `quota-gate` and `wrap-up`. `babysit-pr`, `takeover`,
+  `leaving-pr-comments`, `create-verify` and `correct-mistakes` moved to `extras/` and are not installed by default.
+- `publish` builds a Before / After table (the base commit beside the head, one row per state, from files named
+  `before-<state>` and `after-<state>`), with a "Not shown" line. It publishes the few named files, not the folder: real
+  evidence folders averaged 10 MB per ticket. The files go to `refs/jstack-evidence/<ticket>`, which a normal fetch or
+  clone does not download, instead of a branch every worker would fetch. One ref per ticket also ends the race between
+  two workers pushing to one branch.
+- A pull request ends with "Who did the work", and the review verdict is one `Review:` line that `check` reads.
+- `quota-probe` always handles the refusal marks itself and hands only the reading to a configured `quota_probe`, which
+  now has to answer one question (`--provider NAME`).
+- `RUNSTATE.md` is written when a worker stops before the end, not at every step.
+- The repo's `AGENTS.md` copy is the card plus the settings block; `templates/AGENTS.md` no longer carries a version
+  marker and the long flow.
+
+### Removed
+- Settings `models` (say it in `routing`), `review_bots` and `advisory_bots` (options of `pr-wait`), `quota_source`,
+  `quota_max_age_minutes`, `iteration_minutes`, `posthoc_queue` and `paid_fallback`. `doctor` names any that a repo still
+  sets.
+- `trail`, `template-drift` (the card check in `doctor` replaces it), `pr-evidence-check` (now a line of `check`), the
+  45-day limit of `--until`, and `docs/OPERATING-MODEL.md`.
+
 ## 0.10.1
 
 The reader of a pull request can see the screenshots. Measured over two weeks of four real repos: of 214 pull requests that

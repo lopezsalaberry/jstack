@@ -18,7 +18,6 @@ import shlex
 import shutil
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -37,18 +36,13 @@ def run(args: list[str], env: dict | None = None) -> subprocess.CompletedProcess
 
 
 def probe_contract(probe: list[str]) -> tuple[str, str]:
-    """Walk the quota-gate contract with a throwaway name and marks file. A usage error that exits 2 reads as
-    "unknown", so exit codes alone cannot tell a probe that says "no data" from one that did not understand us."""
-    with tempfile.TemporaryDirectory() as tmp:
-        env = {**os.environ, "JSTACK_QUOTA_MARKS": str(Path(tmp) / "marks.txt")}
-        steps = [(["--provider", "doctor-check"], (0, 1, 2)), (["--mark-exhausted", "doctor-check", "--minutes", "1"], (0,)),
-                 (["--provider", "doctor-check"], (1,)), (["--clear", "doctor-check"], (0,))]
-        for args, expected in steps:
-            result = run([*probe, *args], env=env)
-            if result.returncode not in expected or "usage:" in result.stderr.lower():
-                why = "printed a usage error" if "usage:" in result.stderr.lower() else f"exited {result.returncode}, expected {'/'.join(map(str, expected))}"
-                return "FAIL", f"`{' '.join(args)}` {why}. The probe does not speak the quota-gate contract, so every provider would look unknown and no refusal would ever be marked"
-    return "ok", "speaks the contract: --provider, --mark-exhausted, --clear; exit 2 means no data, which is not a block"
+    """A probe only has to answer `--provider NAME` with exit 0, 1 or 2. A usage error that exits 2 reads as "unknown",
+    so the exit code alone cannot tell a probe that says "no data" from one that did not understand the call."""
+    result = run([*probe, "--provider", "doctor-check"])
+    if result.returncode not in (0, 1, 2) or "usage:" in result.stderr.lower():
+        why = "printed a usage error" if "usage:" in result.stderr.lower() else f"exited {result.returncode}, expected 0, 1 or 2"
+        return "FAIL", f"`--provider doctor-check` {why}. The probe does not answer the question, so every provider would look unknown"
+    return "ok", "answers --provider with 0 (quota), 1 (none) or 2 (no data, which is not a block)"
 
 
 def ui_gate(repo: Path, values: dict) -> tuple[str, str]:
@@ -67,19 +61,27 @@ def ui_gate(repo: Path, values: dict) -> tuple[str, str]:
     return "ok", "no design tokens in this repo; nothing to gate"
 
 
-def template_state(repo: Path) -> tuple[str, str]:
-    """Ask `template-drift` about this repo's copy of the AGENTS.md flow."""
-    done = run([sys.executable, str(HERE / "template-drift"), str(repo)])
-    first = (done.stdout.strip().splitlines() or [""])[0]
-    status, _, rest = first.partition(" ")
-    detail = rest.strip().split(": ", 1)[-1]
-    if status == "ok":
-        return "ok", detail
-    if status == "skip":  # the doctor is run for a repo that is meant to use jstack
-        return "warn", f"{detail}; agents there never read the rules. Copy templates/AGENTS.md into it and keep the project's own rules"
-    if status in ("stale", "ahead"):
-        return "warn", detail
-    return "warn", done.stderr.strip() or "template-drift gave no answer"
+CARD = re.compile(r"<!-- jstack-card -->.*?<!-- /jstack-card -->", re.S)
+
+
+def card_state(repo: Path) -> tuple[str, str]:
+    """The rules card is the only text every session is sure to read. It may sit in the repo's AGENTS.md or in a file
+    the harness loads for every repo; an old or missing copy means the rules are not followed."""
+    template = SKILLS.parent / "templates" / "AGENTS.md"
+    shipped = CARD.search(template.read_text()) if template.is_file() else None
+    if not shipped:
+        return "warn", f"{template} has no rules card, so there is nothing to compare; install from a full clone"
+    places = [repo / "AGENTS.md", Path.home() / ".claude" / "CLAUDE.md", Path.home() / ".codex" / "AGENTS.md"]
+    old = None
+    for place in places:
+        found = CARD.search(place.read_text(errors="replace")) if place.is_file() else None
+        if found and " ".join(found.group(0).split()) == " ".join(shipped.group(0).split()):
+            return "ok", f"current, in {place}"
+        old = old or (place if found else None)
+    if old:
+        return "warn", f"{old} carries an older or edited card: run `install.sh --card {old}`"
+    return "warn", (f"no file an agent reads here carries the rules card, so the rules are not followed. Run `install.sh --card "
+                    f"{repo / 'AGENTS.md'}` for this repo, or `--card` with the file your harness loads for every repo")
 
 
 def newest_tag(checkout: Path) -> tuple:
@@ -144,19 +146,20 @@ def main() -> None:
             "" if configured else "none found; defaults apply. Add a `## jstack settings` block (see the `jstack` skill)")
         level, detail = ui_gate(repo, values)
         say(level, "UI design gate", detail)
-        level, detail = template_state(repo)
-        say(level, "AGENTS.md matches the current template", detail)
+        level, detail = card_state(repo)
+        say(level, "rules card", detail)
+        unknown = sorted(set(configured) - set(settings.DEFAULTS))
+        if unknown:
+            say("warn", "settings this version does not read", f"{', '.join(unknown)}: remove them from the `## jstack settings` block")
         probe = shlex.split(values["quota_probe"])
         if not probe or (not Path(probe[0]).exists() and not shutil.which(probe[0])):
             say("FAIL", "quota_probe command", f"{values['quota_probe']!r} not found")
         else:
             try:
-                result = run([*probe, "--provider", "doctor-check"])
-            except OSError as error:  # a check must report a problem, never crash on it
-                say("FAIL", "quota_probe runs", f"cannot execute it: {error}")
-            else:
                 level, detail = probe_contract(probe)
-                say(level, "quota_probe runs", detail)
+            except OSError as error:  # a check must report a problem, never crash on it
+                level, detail = "FAIL", f"cannot execute it: {error}"
+            say(level, "quota_probe runs", detail)
 
     if args.check_updates:
         level, detail = checkout_freshness()

@@ -10,14 +10,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SETTINGS = ROOT / "skills/jstack/scripts/jstack-settings"
 DOCTOR = ROOT / "skills/jstack/scripts/doctor"
-PROBE = ROOT / "skills/quota-gate/scripts/quota-probe"
-WAVE = ROOT / "skills/fanout/scripts/wave-status"
-PRWAIT = ROOT / "skills/babysit-pr/scripts/pr-wait"
-PROOFVALID = ROOT / "skills/evidence/scripts/proof-valid"
-TRAIL = ROOT / "skills/jstack/scripts/trail"
-CHECKLIST = ROOT / "skills/evidence/scripts/checklist-init"
-TOKENLINT = ROOT / "skills/full-send/scripts/token-lint"
-TEMPLATE_DRIFT = ROOT / "skills/jstack/scripts/template-drift"
+PROBE = ROOT / "skills/wave/scripts/quota-probe"
+WAVE = ROOT / "skills/wave/scripts/wave-status"
+PRWAIT = ROOT / "extras/babysit-pr/scripts/pr-wait"
+PROOFVALID = ROOT / "skills/ticket/scripts/proof-valid"
+CHECKLIST = ROOT / "skills/ticket/scripts/checklist-init"
+TOKENLINT = ROOT / "skills/ticket/scripts/token-lint"
+CHECK = ROOT / "skills/ticket/scripts/check"
+BRIEF = ROOT / "skills/wave/scripts/brief"
+PUBLISH = ROOT / "skills/ticket/scripts/publish"
 TEMPLATE = ROOT / "templates/AGENTS.md"
 
 
@@ -46,21 +47,21 @@ def repo(tmp_path, agents=""):
 # --- settings ---------------------------------------------------------------
 
 def test_settings_precedence_is_env_then_agents_md_then_default(tmp_path):
-    r = repo(tmp_path, "# P\n\n## jstack settings\nintegration_branch: develop\nmodels: a:m1, b:m2  # order matters\n"
-                       "iteration_minutes: 45\n\n## Other\niteration_minutes: 999\n")
+    r = repo(tmp_path, "# P\n\n## jstack settings\nintegration_branch: develop\nreviewer_models: a:m1, b:m2  # order matters\n"
+                       "max_parallel: 4\n\n## Other\nmax_parallel: 999\n")
     out = json.loads(run([SETTINGS, "--repo", r, "--json"], cwd=tmp_path).stdout)
     assert out["integration_branch"] == "develop"
-    assert out["models"] == "a:m1, b:m2"          # inline comment stripped
-    assert out["iteration_minutes"] == "45"       # a later heading does not leak in
-    assert out["paid_fallback"] == "off" and out["review_bots"] == ""
-    env = run([SETTINGS, "--repo", r, "iteration_minutes"], cwd=tmp_path, env={"JSTACK_ITERATION_MINUTES": "5"})
+    assert out["reviewer_models"] == "a:m1, b:m2"  # inline comment stripped
+    assert out["max_parallel"] == "4"             # a later heading does not leak in
+    assert out["verify_mode"] == "visible" and out["routing"] == ""
+    env = run([SETTINGS, "--repo", r, "max_parallel"], cwd=tmp_path, env={"JSTACK_MAX_PARALLEL": "5"})
     assert env.stdout.strip() == "5"
 
 
 def test_settings_without_a_block_use_defaults_and_unknown_keys_fail(tmp_path):
     r = repo(tmp_path)
     assert run([SETTINGS, "--repo", r, "integration_branch"], cwd=tmp_path).stdout.strip() == "main"
-    assert run([SETTINGS, "--repo", r, "quota_probe"], cwd=tmp_path).stdout.strip().endswith("quota-gate/scripts/quota-probe")
+    assert run([SETTINGS, "--repo", r, "quota_probe"], cwd=tmp_path).stdout.strip().endswith("wave/scripts/quota-probe")
     bad = run([SETTINGS, "--repo", r, "nope"], cwd=tmp_path)
     assert bad.returncode == 2 and "unknown key" in bad.stderr
 
@@ -89,8 +90,18 @@ def test_the_shipped_probe_hands_the_call_to_the_configured_one(tmp_path):
     fake.chmod(0o755)
     direct = run([PROBE, "--provider", "codex"], cwd=tmp_path, env={"JSTACK_QUOTA_PROBE": str(fake)})
     assert direct.returncode == 1 and direct.stdout.strip() == "configured --provider codex", (direct.stdout, direct.stderr)
-    marked = run([PROBE, "--mark-exhausted", "codex", "--minutes", "5"], cwd=tmp_path, env={"JSTACK_QUOTA_PROBE": str(fake)})
-    assert marked.stdout.strip() == "configured --mark-exhausted codex --minutes 5"
+    fine = tmp_path / "fine-probe"                           # a configured probe that knows nothing about marks
+    fine.write_text("#!/usr/bin/env python3\nimport sys\nprint('configured', *sys.argv[1:])\nsys.exit(0)\n")
+    fine.chmod(0o755)
+    env = {"JSTACK_QUOTA_PROBE": str(fine), "JSTACK_QUOTA_MARKS": str(tmp_path / "marks.txt")}
+    marked = run([PROBE, "--mark-exhausted", "alpha", "--minutes", "5"], cwd=tmp_path, env=env)
+    assert "marked exhausted" in marked.stdout and "configured" not in marked.stdout, "marks are kept here, not handed off"
+    refused = run([PROBE, "--provider", "alpha"], cwd=tmp_path, env=env)
+    assert refused.returncode == 1 and "configured" not in refused.stdout, "a mark answers before the configured probe is asked"
+    other = run([PROBE, "--provider", "beta"], cwd=tmp_path, env=env)
+    assert other.returncode == 0 and other.stdout.strip() == "configured --provider beta", "only the reading is handed off"
+    assert run([PROBE, "--clear", "alpha"], cwd=tmp_path, env=env).returncode == 0
+    assert run([PROBE, "--provider", "alpha"], cwd=tmp_path, env=env).stdout.strip() == "configured --provider alpha"
     listing = run([PROBE], cwd=tmp_path, env={"JSTACK_QUOTA_PROBE": str(fake)})
     assert listing.returncode == 1 and listing.stdout.strip() == "configured", "a call with no arguments reaches it too"
     r = repo(tmp_path, f"# P\n\n## jstack settings\nquota_probe: {fake}\n")
@@ -151,8 +162,7 @@ def test_until_marks_a_provider_for_as_long_as_its_refusal_lasts(tmp_path):
     expires = float((tmp_path / "marks.txt").read_text().split()[1])
     assert 19 * 86400 < expires - time.time() < 21 * 86400, "about 20 days, not the hour --minutes would give"
     assert run([PROBE, "--provider", "cursor"], cwd=tmp_path, env=marks).returncode == 1
-    far = time.strftime("%Y-%m-%d", time.localtime(time.time() + 90 * 86400))
-    for text, why in (("2020-01-01", "already past"), (far, "days away"), ("tomorrow-ish", "not an ISO")):
+    for text, why in (("2020-01-01", "already past"), ("tomorrow-ish", "not an ISO")):
         bad = run([PROBE, "--mark-exhausted", "x", "--until", text], cwd=tmp_path, env=marks)
         assert bad.returncode == 64 and why in bad.stderr, (text, bad.stderr)   # 64, never the 2 that means "unknown"
     both = run([PROBE, "--mark-exhausted", "x", "--minutes", "5", "--until", later], cwd=tmp_path, env=marks)
@@ -176,13 +186,13 @@ def test_the_operators_own_settings_sit_between_the_repo_and_the_default(tmp_pat
     preference must reach every repo without editing each AGENTS.md, and a repo may still replace it."""
     user = tmp_path / "mine.txt"
     user.write_text("# my defaults\nreviewer_models: codex, cursor, auto  # my order\nrouting: UI and UX work: the strongest model\n"
-                    "models: pinned:one\n")
-    r = repo(tmp_path, "# P\n\n## jstack settings\nmodels: repo:two\n")
+                    "max_parallel: 3\n")
+    r = repo(tmp_path, "# P\n\n## jstack settings\nmax_parallel: 7\n")
     env = {"JSTACK_USER_SETTINGS": str(user)}
     out = json.loads(run([SETTINGS, "--repo", r, "--json"], cwd=tmp_path, env=env).stdout)
     assert out["reviewer_models"] == "codex, cursor, auto"        # from the operator's file, inline comment stripped
     assert out["routing"] == "UI and UX work: the strongest model"
-    assert out["models"] == "repo:two"                            # the repo's value replaces the operator's
+    assert out["max_parallel"] == "7"                             # the repo's value replaces the operator's
     over = run([SETTINGS, "--repo", r, "reviewer_models"], cwd=tmp_path, env={**env, "JSTACK_REVIEWER_MODELS": "x"})
     assert over.stdout.strip() == "x"                             # the environment still wins
     assert run([SETTINGS, "--repo", r, "routing"], cwd=tmp_path).stdout.strip() == ""    # no file: the default
@@ -328,24 +338,6 @@ def test_proof_valid_refuses_a_checklist_that_names_no_patch(tmp_path):
     checklist.write_text("Revision: abc\nPASS something\n")
     bad = run([PROOFVALID, "--checklist", checklist, "--base", "main"], cwd=r)
     assert bad.returncode == 2 and "Patch-id" in bad.stderr
-
-
-# --- decision trail --------------------------------------------------------------
-
-def test_trail_only_appends_and_neutralizes_formulas(tmp_path):
-    log = tmp_path / "TRAIL.tsv"
-    run([TRAIL, log, "frame", "counted the work", "to size it", "commit 3a9f1c2", "found 5 things"], cwd=tmp_path)
-    first = log.read_text()
-    run([TRAIL, log, "build", "=HYPERLINK(\"x\")", "multi\nline\twhy", "pr 12", "green"], cwd=tmp_path)
-    after = log.read_text()
-    assert after.startswith(first), "earlier rows must never change"
-    rows = [r.split("\t") for r in after.splitlines()]
-    assert rows[0][:3] == ["ts", "phase", "decision"] and len(rows) == 3
-    assert rows[2][2] == "'=HYPERLINK(\"x\")" and rows[2][3] == "multi line why"
-    assert all(len(r) == 6 for r in rows)
-    assert run([TRAIL, "--check", log], cwd=tmp_path).returncode == 0
-    log.write_text(after + "not\ta\trow\n")
-    assert run([TRAIL, "--check", log], cwd=tmp_path).returncode == 1
 
 
 # --- token lint: the mechanical half of the UI gate ---------------------------------
@@ -544,10 +536,11 @@ def test_the_stack_works_from_a_path_with_spaces(tmp_path):
     import shutil as _shutil
     spaced = tmp_path / "Crucial X9" / "base"
     _shutil.copytree(ROOT / "skills", spaced / "skills", ignore=_shutil.ignore_patterns("__pycache__"))
+    _shutil.copytree(ROOT / "templates", spaced / "templates")
     r = repo(tmp_path)
     probe = run([spaced / "skills/jstack/scripts/jstack-settings", "--repo", r, "quota_probe"], cwd=tmp_path).stdout.strip()
     import shlex as _shlex
-    assert _shlex.split(probe)[0].endswith("Crucial X9/base/skills/quota-gate/scripts/quota-probe"), probe
+    assert _shlex.split(probe)[0].endswith("Crucial X9/base/skills/wave/scripts/quota-probe"), probe
     done = run([spaced / "skills/jstack/scripts/doctor", "--repo", r], cwd=tmp_path, env={"PATH": str(tools_dir(tmp_path, True))})
     assert "Traceback" not in done.stderr, done.stderr
     assert "ok   quota_probe runs" in done.stdout, done.stdout
@@ -564,7 +557,7 @@ def test_a_probe_that_cannot_run_is_reported_not_a_crash(tmp_path):
 def test_every_shipped_script_survives_deprecation_warnings_as_errors():
     """A newer Python turns today's deprecation warning into tomorrow's crash (found on a Mac with a newer
     Homebrew Python: the doctor used a function that no longer exists there)."""
-    scripts = [p for p in ROOT.glob("skills/*/scripts/*") if p.is_file()]
+    scripts = [p for d in ("skills", "extras") for p in ROOT.glob(f"{d}/*/scripts/*") if p.is_file()]
     assert len(scripts) >= 8
     for script in scripts:
         done = subprocess.run([sys.executable, "-W", "error", str(script), "--help"], capture_output=True, text=True,
@@ -607,14 +600,15 @@ def test_doctor_fails_a_probe_that_does_not_speak_the_contract(tmp_path):
     assert "FAIL quota_probe runs" in done.stdout and "usage error" in done.stdout and done.returncode == 1, done.stdout
 
 
-def test_doctor_fails_a_probe_that_answers_provider_but_cannot_mark(tmp_path):
+def test_a_configured_probe_only_has_to_answer_provider(tmp_path):
+    """The shipped quota-probe keeps the refusal marks, so a probe of your own answers one question."""
     fake = _fake_probe(tmp_path, "import sys\nif sys.argv[1:2] == ['--provider']:\n    sys.exit(2)\nsys.stderr.write('usage: fake [--provider NAME]\\n')\nsys.exit(2)\n")
     done = _doctor_with_probe(tmp_path, fake)
-    assert "FAIL quota_probe runs" in done.stdout and "--mark-exhausted" in done.stdout and done.returncode == 1, done.stdout
+    assert "ok   quota_probe runs" in done.stdout and done.returncode == 0, done.stdout
 
 
 def test_doctor_leaves_the_real_marks_file_alone(tmp_path):
-    """The contract walk uses a throwaway marks file and a throwaway provider name."""
+    """The doctor asks about a throwaway provider name and writes no mark."""
     marks = tmp_path / "real-marks.txt"
     marks.write_text("claude 4102444800 keep me\n")
     r = repo(tmp_path)
@@ -623,7 +617,7 @@ def test_doctor_leaves_the_real_marks_file_alone(tmp_path):
     assert marks.read_text() == "claude 4102444800 keep me\n"
 
 
-# --- the UI gate, the template copy and the version, as the doctor reports them ----------------------
+# --- the UI gate, the rules card and the version, as the doctor reports them ----------------------
 
 def test_doctor_says_when_the_ui_gate_is_off(tmp_path):
     """2026-11-10: five repos had a design system, none had `ui_paths`, so the gate never applied and 27 sessions that edited
@@ -641,49 +635,24 @@ def test_doctor_says_when_the_ui_gate_is_off(tmp_path):
     assert "ok   UI design gate: no design tokens" in run([DOCTOR, "--repo", r], cwd=tmp_path, env=path).stdout
 
 
-def _marker_line():
-    return TEMPLATE.read_text().splitlines()[0]
-
-
-def test_template_drift_names_old_copies(tmp_path):
-    """2026-11-10: three of five repos still carried the 0.5.4 flow, which lacks every rule added since."""
-    current = TEMPLATE.read_text()
-    marker = _marker_line()
-
-    def make(name, text):
-        d = tmp_path / name
-        d.mkdir()
-        (d / "AGENTS.md").write_text(text)
-        return d
-
-    fresh = make("fresh", current + "\n# Project rules\n")
-    old = make("old", current.replace(marker, "<!-- jstack-template: 0.1.0 -->"))
-    unmarked = make("unmarked", current.replace(marker + "\n\n", ""))
-    newer = make("newer", current.replace(marker, "<!-- jstack-template: 99.0.0 -->"))
-    major, minor, _ = map(int, re.search(r"(\d+)\.(\d+)\.(\d+)", marker).groups())
-    # A version whose order as numbers differs from its order as text: 0.9.9 against 0.10.x, 0.10.0 against 0.9.x.
-    tricky, tricky_status = ((f"{major}.9.9", "stale") if minor >= 10 else (f"{major}.10.0", "ahead"))
-    ten = make("ten", current.replace(marker, f"<!-- jstack-template: {tricky} -->"))
-    plain = make("plain", "# Something else\n")
-    empty = tmp_path / "empty"
-    empty.mkdir()
-    done = run([TEMPLATE_DRIFT, fresh, old, unmarked, newer, ten, plain, empty], cwd=tmp_path)
-    status = {Path(line.split()[1].rstrip(":")).name: line.split()[0] for line in done.stdout.splitlines()}
-    assert status == {"fresh": "ok", "old": "stale", "unmarked": "stale", "newer": "ahead", "ten": tricky_status, "plain": "skip", "empty": "skip"}
-    assert done.returncode == 1
-    assert run([TEMPLATE_DRIFT, fresh, plain], cwd=tmp_path).returncode == 0
-    assert run([TEMPLATE_DRIFT, tmp_path / "missing"], cwd=tmp_path).returncode == 2
-
-
-def test_doctor_warns_about_an_old_or_missing_copy_of_the_template(tmp_path):
+def test_doctor_says_when_no_file_an_agent_reads_has_the_current_card(tmp_path):
+    """A rule is followed only if it is read. 2026-11-10: three of five repos carried an old copy of the rules and nothing
+    said so. The card may sit in the repo or in a file the harness loads for every repo."""
     current = TEMPLATE.read_text()
     r = repo(tmp_path, current)
     path = {"PATH": str(tools_dir(tmp_path, True))}
-    assert "ok   AGENTS.md matches the current template" in run([DOCTOR, "--repo", r], cwd=tmp_path, env=path).stdout
-    (r / "AGENTS.md").write_text(current.replace(_marker_line(), "<!-- jstack-template: 0.1.0 -->"))
-    assert "warn AGENTS.md matches the current template: the copy is from 0.1.0" in run([DOCTOR, "--repo", r], cwd=tmp_path, env=path).stdout
-    (r / "AGENTS.md").write_text("# P\n")
-    assert "warn AGENTS.md matches the current template: AGENTS.md does not use the jstack flow" in run([DOCTOR, "--repo", r], cwd=tmp_path, env=path).stdout
+    doctor = lambda: run([DOCTOR, "--repo", r], cwd=tmp_path, env=path).stdout
+    assert "ok   rules card: current, in" in doctor()
+    (r / "AGENTS.md").write_text(current.replace("**One gate.**", "**One gate, usually.**"))
+    assert "warn rules card:" in doctor() and "older or edited card" in doctor()
+    (r / "AGENTS.md").write_text("# P\n\n## jstack settings\nmodels: a:b\nui_paths:\n")
+    out = doctor()
+    assert "warn rules card: no file an agent reads here carries the rules card" in out
+    assert "warn settings this version does not read: models" in out
+    user = tmp_path / ".claude" / "CLAUDE.md"                    # HOME is the working directory in these tests
+    user.parent.mkdir()
+    user.write_text("# My notes\n\n" + current.split("## jstack settings")[0])
+    assert f"ok   rules card: current, in {user}" in doctor()
 
 
 def _checkout(tmp_path, local_version, remote_tags):
@@ -733,139 +702,275 @@ def test_doctor_is_quiet_about_the_version_when_the_checkout_is_current_or_canno
     assert "warn jstack is the newest version: could not ask origin" in out.stdout and out.returncode == 0, out.stdout
 
 
-# --- screenshots in the pull request ----------------------------------------
+# --- the before and after, where the reader of the pull request sees them ------------------------
 
-PUBLISH = ROOT / "skills/evidence/scripts/publish"
-EVIDENCE_CHECK = ROOT / "skills/evidence/scripts/pr-evidence-check"
+def _out(*cmd, cwd=None):
+    return subprocess.run(list(map(str, cmd)), cwd=cwd, capture_output=True, text=True).stdout.strip()
 
 
-def _with_origin(tmp_path, name="origin.git"):
-    bare = tmp_path / name
+def _with_origin(tmp_path, agents=""):
+    """A repo on a branch `feat` with one commit over `main`, and a bare `origin` that has `main`."""
+    bare = tmp_path / "origin.git"
     bare.mkdir()
     git(bare, "init", "-q", "--bare")
-    r = repo(tmp_path)
+    r = repo(tmp_path, agents)
     git(r, "remote", "add", "origin", str(bare))
+    git(r, "push", "-q", "origin", "main")
+    git(r, "checkout", "-q", "-b", "feat")
+    (r / "change.txt").write_text("one\n")
+    git(r, "add", "-A")
+    git(r, "commit", "-q", "-m", "change")
     return r, bare
 
 
-def _fake_gh(tmp_path, body):
-    """A gh that serves `pr view` from a file and stores what `pr edit --body-file` is given."""
+def _fake_gh(tmp_path, pr):
+    """A gh that serves `pr view` from a dict and stores what `pr edit --body-file` is given."""
     bin_dir = tmp_path / "ghbin"
     bin_dir.mkdir(exist_ok=True)
-    (tmp_path / "gh-body.txt").write_text(body)
+    (tmp_path / "gh-pr.json").write_text(json.dumps(pr))
     (bin_dir / "gh").write_text(
         "#!/usr/bin/env python3\nimport json, sys, pathlib\na = sys.argv[1:]\nbase = pathlib.Path(__file__).parent.parent\n"
-        "if a[:2] == ['pr', 'view']:\n    body = (base / 'gh-body.txt').read_text()\n"
-        "    print(json.dumps({'body': body, 'comments': []}) if '--json' in a and 'body,comments' in a else body)\n"
+        "data = json.loads((base / 'gh-pr.json').read_text())\n"
+        "if a[:2] == ['pr', 'view']:\n    print(data['body'] if '-q' in a else json.dumps(data))\n"
         "elif a[:2] == ['pr', 'edit']:\n    (base / 'gh-edited.txt').write_text(pathlib.Path(a[a.index('--body-file') + 1]).read_text())\n")
     (bin_dir / "gh").chmod(0o755)
     return {"PATH": f"{bin_dir}:{os.environ['PATH']}"}
 
 
-def test_publish_shows_the_screenshots_from_a_branch_that_is_not_the_change(tmp_path):
-    """2026-11: 103 of 214 UI pull requests said the screenshots were under .artifacts/ (not in git); 3 showed one."""
+WEB = "https://example.test/o/r"
+
+
+def test_publish_builds_a_before_and_after_table_in_a_ref_nobody_fetches(tmp_path):
+    """Two weeks of four repos: 103 of 214 UI pull requests said "screenshots are under .artifacts/" and showed nothing.
+    Real evidence folders averaged 10 MB a ticket, so the folder is not what gets published, and not to a branch."""
     r, bare = _with_origin(tmp_path)
     shots = r / ".artifacts" / "T-1"
     shots.mkdir(parents=True)
-    (shots / "01-start.png").write_bytes(b"png1")
-    (shots / "02-end.png").write_bytes(b"png2")
-    (shots / "clip.mov").write_bytes(b"mov")
-    (shots / "notes.txt").write_text("not an image")
-    (shots / "huge.png").write_bytes(b"x" * 3000)
-    head = subprocess.run(["git", "-C", str(r), "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
-    done = run([PUBLISH, "T-1", "--repo", r, "--web-base", "https://example.test/o/r", "--max-mb", "0.001"], cwd=tmp_path)
+    for name in ("before-start.png", "after-start.png", "after-new-panel.png", "01-raw-capture.png", "notes.md"):
+        (shots / name).write_bytes(name.encode())
+    (shots / "before.txt").write_text("FAILED 1\n")
+    (shots / "after.txt").write_text("passed 1\n")
+    head, base = _out("git", "-C", r, "rev-parse", "HEAD"), _out("git", "-C", r, "rev-parse", "main")
+    done = run([PUBLISH, "T-1", "--repo", r, "--web-base", WEB, "--base", "main", "--not-shown", "Safari was not tried"], cwd=tmp_path)
     assert done.returncode == 0, (done.stdout, done.stderr)
-    commit = subprocess.run(["git", "-C", str(bare), "rev-parse", "jstack-evidence"], capture_output=True, text=True).stdout.strip()
-    assert f"![01-start](https://example.test/o/r/blob/{commit}/T-1/{head}/01-start.png?raw=true)" in done.stdout
-    assert f"[clip (video)](https://example.test/o/r/blob/{commit}/T-1/{head}/clip.mov?raw=true)" in done.stdout
-    assert "notes.txt" not in done.stdout and "huge.png" not in done.stdout and "skipped huge.png" in done.stderr
-    tree = subprocess.run(["git", "-C", str(bare), "ls-tree", "-r", "--name-only", "jstack-evidence"], capture_output=True, text=True).stdout
-    assert f"T-1/{head}/02-end.png" in tree.splitlines()
-    branches = subprocess.run(["git", "-C", str(r), "branch", "--list"], capture_output=True, text=True).stdout
-    assert "jstack-evidence" not in branches and subprocess.run(["git", "-C", str(r), "diff", "--cached", "--quiet"]).returncode == 0, \
-        "the repo's own branches and index are not touched"
-    again = run([PUBLISH, "T-1", "--repo", r, "--web-base", "https://example.test/o/r", "--max-mb", "0.001"], cwd=tmp_path)
-    assert subprocess.run(["git", "-C", str(bare), "rev-parse", "jstack-evidence"], capture_output=True, text=True).stdout.strip() == commit, \
-        "the same files published twice make no second commit"
-    other = r / ".artifacts" / "T-2"
-    other.mkdir()
-    (other / "a.png").write_bytes(b"other")
-    assert run([PUBLISH, "T-2", "--repo", r, "--web-base", "https://example.test/o/r"], cwd=tmp_path).returncode == 0
-    tree = subprocess.run(["git", "-C", str(bare), "ls-tree", "-r", "--name-only", "jstack-evidence"], capture_output=True, text=True).stdout
-    assert f"T-1/{head}/01-start.png" in tree and f"T-2/{head}/a.png" in tree, "a later ticket keeps the earlier ones"
-    assert again.returncode == 0
+    commit = _out("git", "-C", bare, "rev-parse", "refs/jstack-evidence/T-1")
+    at = f"{WEB}/blob/{commit}/{head[:10]}"
+    assert f"| | Before: [{base[:10]}]({WEB}/commit/{base}) | After: [{head[:10]}]({WEB}/commit/{head}) |" in done.stdout
+    assert f"| start | ![Before: start]({at}/before-start.png?raw=true) | ![After: start]({at}/after-start.png?raw=true) |" in done.stdout
+    assert f"| new panel | (new) | ![After: new panel]({at}/after-new-panel.png?raw=true) |" in done.stdout
+    assert f"| Output | [before.txt]({at}/before.txt) | [after.txt]({at}/after.txt) |" in done.stdout
+    assert "**Not shown:** Safari was not tried" in done.stdout
+    assert "raw-capture" not in done.stdout and "notes" not in done.stdout, "only the named files are published"
+    assert _out("git", "-C", bare, "for-each-ref", "--format=%(refname)") .splitlines() == ["refs/heads/main", "refs/jstack-evidence/T-1"]
+    clone = tmp_path / "clone"
+    subprocess.run(["git", "clone", "-q", f"file://{bare}", str(clone)], check=True, capture_output=True)   # file:// uses the real transport
+    assert subprocess.run(["git", "-C", str(clone), "cat-file", "-e", commit], capture_output=True).returncode != 0, \
+        "a normal clone does not download the pictures"
+    assert "jstack-evidence" not in _out("git", "-C", r, "for-each-ref") and subprocess.run(["git", "-C", str(r), "diff", "--cached", "--quiet"]).returncode == 0, \
+        "the repo's own refs and index are not touched"
+    assert run([PUBLISH, "T-1", "--repo", r, "--web-base", WEB, "--base", "main"], cwd=tmp_path).returncode == 0
+    assert _out("git", "-C", bare, "rev-parse", "refs/jstack-evidence/T-1") == commit, "the same files twice make no second commit"
+    (r / "change.txt").write_text("two\n")
+    git(r, "commit", "-q", "-am", "more")
+    (shots / "after-start.png").write_bytes(b"newer")
+    assert run([PUBLISH, "T-1", "--repo", r, "--web-base", WEB, "--base", "main"], cwd=tmp_path).returncode == 0
+    assert _out("git", "-C", bare, "rev-parse", "refs/jstack-evidence/T-1^") == commit, "a later run adds to the ref, so earlier links keep working"
+    tree = _out("git", "-C", bare, "ls-tree", "-r", "--name-only", "refs/jstack-evidence/T-1")
+    assert f"{head[:10]}/after-start.png" in tree and f"{_out('git', '-C', r, 'rev-parse', 'HEAD')[:10]}/after-start.png" in tree
 
 
-def test_publish_does_not_pretend_when_the_origin_cannot_serve_images_or_there_is_nothing(tmp_path):
+def test_publish_refuses_the_folder_a_big_file_and_an_origin_nobody_can_open(tmp_path):
     r, bare = _with_origin(tmp_path)
-    assert run([PUBLISH, "T-9", "--repo", r], cwd=tmp_path).returncode == 1, "no .artifacts folder for the ticket"
+    publish = lambda *a: run([PUBLISH, "T-9", "--repo", r, "--base", "main", *a], cwd=tmp_path)
+    assert publish("--web-base", WEB).returncode == 1, "no .artifacts folder for the ticket"
     shots = r / ".artifacts" / "T-9"
     shots.mkdir(parents=True)
-    assert run([PUBLISH, "T-9", "--repo", r], cwd=tmp_path).returncode == 1, "a folder with no images"
-    (shots / "a.png").write_bytes(b"x")
-    local = run([PUBLISH, "T-9", "--repo", r], cwd=tmp_path)           # a bare repo on disk is not a web address
-    assert local.returncode == 2 and "stay local" in local.stderr and "a.png" in local.stderr, (local.stdout, local.stderr)
-    assert subprocess.run(["git", "-C", str(bare), "branch", "--list"], capture_output=True, text=True).stdout.strip() == "", \
-        "nothing was pushed"
+    (shots / "01.png").write_bytes(b"x")
+    unnamed = publish("--web-base", WEB)
+    assert unnamed.returncode == 1 and "before-<state>.png" in unnamed.stderr, "a capture with no before- or after- name says nothing"
+    (shots / "after-a.png").write_bytes(b"x" * 3000)
+    big = publish("--web-base", WEB, "--max-mb", "0.001")
+    assert big.returncode == 2 and "after-a.png" in big.stderr and "over" in big.stderr
+    for i in range(9):
+        (shots / f"after-s{i}.png").write_bytes(b"x")
+    many = publish("--web-base", WEB)
+    assert many.returncode == 2 and "limit 8" in many.stderr, "the folder is not what gets published"
+    for i in range(9):
+        (shots / f"after-s{i}.png").unlink()
+    local = publish()                                           # a bare repo on disk is not a web address
+    assert local.returncode == 2 and "stay local" in local.stderr and "after-a.png" in local.stderr, (local.stdout, local.stderr)
+    assert "jstack-evidence" not in _out("git", "-C", bare, "for-each-ref"), "nothing was pushed by any refused run"
+    assert run([PUBLISH, "../x", "--repo", r], cwd=tmp_path).returncode == 2, "a ticket name is not a path"
 
 
-def test_publish_replaces_its_block_in_the_pull_request_description(tmp_path):
+def test_publish_replaces_its_block_in_the_pull_request_and_leaves_a_todo_for_what_is_not_shown(tmp_path):
     r, _ = _with_origin(tmp_path)
     shots = r / ".artifacts" / "T-3"
     shots.mkdir(parents=True)
-    (shots / "01.png").write_bytes(b"x")
-    old = "Fixes the pill.\n\n<!-- jstack-evidence:begin -->\nOLD BLOCK\n<!-- jstack-evidence:end -->\n\nCross-review: none\n"
-    env = _fake_gh(tmp_path, old)
-    done = run([PUBLISH, "T-3", "--repo", r, "--pr", "12", "--web-base", "https://example.test/o/r"], cwd=tmp_path, env=env)
+    (shots / "after-list.png").write_bytes(b"x")
+    old = "Fixes the pill.\n\n<!-- jstack-evidence:begin -->\nOLD BLOCK\n<!-- jstack-evidence:end -->\n\n## Tests\n3 passed\n"
+    env = _fake_gh(tmp_path, {"body": old})
+    done = run([PUBLISH, "T-3", "--repo", r, "--pr", "12", "--web-base", WEB, "--base", "main"], cwd=tmp_path, env=env)
     assert done.returncode == 0, done.stderr
     edited = (tmp_path / "gh-edited.txt").read_text()
     assert "OLD BLOCK" not in edited and edited.count("jstack-evidence:begin") == 1
-    assert "Fixes the pill." in edited and "Cross-review: none" in edited, "the rest of the description is kept"
-    assert "![01](https://example.test/o/r/blob/" in edited
+    assert "Fixes the pill." in edited and "## Tests\n3 passed" in edited, "the rest of the description is kept"
+    assert "![After: list](" in edited and "**Not shown:** TODO" in edited
 
 
-def _ui_branch(tmp_path, ui_paths="app/**/*.tsx", file="app/Button.tsx"):
-    r = repo(tmp_path, f"# P\n\n## jstack settings\nintegration_branch: main\nui_paths: {ui_paths}\n")
+# --- check: the merge gate as one command ---------------------------------------------------
+
+def _proven_ticket(tmp_path, file="app/button.css", text=".btn { color: #3366ff; }\n"):
+    """A repo whose branch `feat` changes one file over `main`, with a stamped checklist that has one PASS row."""
+    r = repo(tmp_path, "# P\n\n## jstack settings\nintegration_branch: main\nui_paths: app/**/*.css\n")
+    (r / "design").mkdir()
+    (r / "design/tokens.json").write_text(json.dumps({"color": {"brand": {"$value": "#3366ff"}}}))
+    git(r, "add", "-A")
+    git(r, "commit", "-q", "-m", "tokens")
     git(r, "checkout", "-q", "-b", "feat")
+    assert run([CHECKLIST, "T-1", "--base", "main"], cwd=r).returncode == 0
     (r / file).parent.mkdir(parents=True, exist_ok=True)
-    (r / file).write_text("export const Button = () => null\n")
+    (r / file).write_text(text)
     git(r, "add", "-A")
     git(r, "commit", "-q", "-m", "change")
     return r
 
 
-def test_a_ui_change_needs_a_screenshot_the_reviewer_can_open(tmp_path):
-    r = _ui_branch(tmp_path)
-    body = tmp_path / "body.md"
-    check = lambda text: (body.write_text(text), run([EVIDENCE_CHECK, "--repo", r, "--base", "main", "--body-file", body], cwd=tmp_path))[1]
-    for nothing in ("Fixes the pill.", "Screenshots are under `.artifacts/LOUD-432` (not in git).",
-                    "![](.artifacts/T/01.png)", "| [smally](https://vercel.com/x) | ![Ready](https://vercel.com/static/status/ready.svg) |",
-                    "![build](https://img.shields.io/badge/build-passing-green)"):
-        bad = check(nothing)
-        assert bad.returncode == 1 and "shows no screenshot" in bad.stderr, (nothing, bad.stdout, bad.stderr)
-    for shown in ("![a](https://example.test/o/r/blob/abc/T/1.png?raw=true)",
-                  '<img width="300" src="https://github.com/user-attachments/assets/abc-123">',
-                  "[clip](https://example.test/x/demo.mp4)"):
-        ok = check(shown)
-        assert ok.returncode == 0 and "ok," in ok.stdout, (shown, ok.stdout, ok.stderr)
+def _row(r, row, stamp=True):
+    """Put one row in the checklist's table (replacing the previous one) and stamp it."""
+    path = r / ".artifacts/T-1/checklist.md"
+    lines = [l for l in path.read_text().splitlines() if not (l.startswith("| ") and not l.startswith("| Target"))]
+    at = next(i for i, l in enumerate(lines) if l.startswith("|---"))
+    path.write_text("\n".join(lines[:at + 1] + [row] + lines[at + 1:]) + "\n")
+    if stamp:
+        assert run([PROOFVALID, "--stamp", path, "--base", "main"], cwd=r).returncode == 0
 
 
-def test_the_screenshot_check_only_applies_to_ui_changes_and_when_the_gate_is_on(tmp_path):
-    body = tmp_path / "body.md"
-    body.write_text("nothing to see")
-    docs = _ui_branch(tmp_path, file="docs/readme.md")
-    done = run([EVIDENCE_CHECK, "--repo", docs, "--base", "main", "--body-file", body], cwd=tmp_path)
-    assert done.returncode == 0 and "nothing to show" in done.stdout, (done.stdout, done.stderr)
-    (tmp_path / "off").mkdir()
-    off = _ui_branch(tmp_path / "off", ui_paths="")
-    done = run([EVIDENCE_CHECK, "--repo", off, "--base", "main", "--body-file", body], cwd=tmp_path)
-    assert done.returncode == 0 and "off" in done.stdout
+def _check(r, *args, env=None):
+    done = run([CHECK, "T-1", "--base", "main", *args], cwd=r, env=env)
+    return done.returncode, {line.split(":")[0]: line for line in done.stdout.splitlines()}, done.stdout
 
 
-def test_the_screenshot_check_reads_the_pull_request_and_its_comments(tmp_path):
-    r = _ui_branch(tmp_path)
-    env = _fake_gh(tmp_path, "![a](https://example.test/x.png)")
-    done = run([EVIDENCE_CHECK, "--repo", r, "--base", "main", "--pr", "7"], cwd=tmp_path, env=env)
-    assert done.returncode == 0 and "ok," in done.stdout, (done.stdout, done.stderr)
-    env = _fake_gh(tmp_path, "no pictures here")
-    assert run([EVIDENCE_CHECK, "--repo", r, "--base", "main", "--pr", "7"], cwd=tmp_path, env=env).returncode == 1
+def test_check_passes_a_proven_change_and_names_what_is_missing(tmp_path):
+    r = _proven_ticket(tmp_path)
+    code, lines, out = _check(r)
+    assert code == 1 and "FAIL proof" in lines and "proof-valid --stamp" in lines["FAIL proof"], out   # nothing stamped yet
+    _row(r, "| the button is blue | PASS | 4 | ran the page | after.txt |")
+    code, lines, out = _check(r)
+    assert code == 0 and out.splitlines()[-1].startswith("check: ok"), out
+    for name in ("PASS branch", "PASS clean tree", "PASS up to date", "PASS proof", "PASS design", "SKIP pull request"):
+        assert name in lines, (name, out)
+    _row(r, "| the button is blue | PASS | 3 | read the code | - |")
+    code, lines, out = _check(r)
+    assert code == 1 and "below level 4" in lines["FAIL proof"], "a PASS nobody ran is not a pass"
+    _row(r, "| the button is blue | FAIL | 5 | still grey | after.png |")
+    assert "target(s) FAIL" in _check(r)[1]["FAIL proof"]
+    _row(r, "| <the thing the ticket asks for> | PASS or FAIL | 1 to 5 | <command> | <file> |")
+    assert "no filled row" in _check(r)[1]["FAIL proof"], "the template row is not proof"
+    assert run([CHECK, "--base", "main"], cwd=r).stdout.count("proof") == 1, "with one checklist the ticket may be left out"
+    assert "FAIL proof: no .artifacts/NOPE/checklist.md" in run([CHECK, "NOPE", "--base", "main"], cwd=r).stdout
+
+
+def test_check_fails_an_edited_change_an_off_token_color_and_a_branch_that_is_not_ready(tmp_path):
+    r = _proven_ticket(tmp_path)
+    _row(r, "| the button is blue | PASS | 5 | saw it | after-button.png |")
+    assert _check(r)[0] == 0
+    (r / "app/button.css").write_text(".btn { color: #ff0000; }\n")
+    code, lines, out = _check(r)
+    assert code == 1 and "uncommitted" in lines["FAIL clean tree"], out
+    git(r, "commit", "-q", "-am", "redder")
+    code, lines, out = _check(r)
+    assert "the patch changed since the proof" in lines["FAIL proof"], out
+    assert "FAIL design" in lines and "is not a design token" in lines["FAIL design"], out
+    git(r, "checkout", "-q", "main")
+    assert "integration branch" in _check(r)[1]["FAIL branch"]
+    (r / "other.txt").write_text("moved on\n")
+    git(r, "add", "-A")
+    git(r, "commit", "-q", "-m", "main moved")
+    git(r, "checkout", "-q", "feat")
+    assert "rebase" in _check(r)[1]["FAIL up to date"]
+    assert run([CHECK, "T-1", "--base", "no/such"], cwd=r).stdout.count("FAIL up to date: no/such does not exist") == 1
+    assert run([CHECK], cwd=tmp_path).returncode == 2, "outside a repo is a usage error, not a verdict"
+
+
+def test_check_reads_the_pull_request_head_screenshot_review_ci_and_mergeability(tmp_path):
+    r = _proven_ticket(tmp_path)
+    _row(r, "| the button is blue | PASS | 5 | saw it | after-button.png |")
+    head = _out("git", "-C", r, "rev-parse", "HEAD")
+    patch = re.search(r"Patch-id: (\S+)", run([PROOFVALID, "--print", "--base", "main"], cwd=r).stdout).group(1)
+    shown = f"![After: button]({WEB}/blob/abc/after-button.png?raw=true)\n\n**Not shown:** dark mode\n"
+    review = f"Review: verify by model-x | independence L1 | verdict PASS | patch {patch}\n"
+    green = [{"name": "ci", "status": "COMPLETED", "conclusion": "SUCCESS"}]
+
+    def check(body, **pr):
+        data = {"body": body, "comments": [], "statusCheckRollup": green, "mergeable": "MERGEABLE", "reviewDecision": "", "headRefOid": head, **pr}
+        return _check(r, "--pr", "7", env=_fake_gh(tmp_path, data))
+
+    code, lines, out = check(shown + review)
+    assert code == 0 and all(f"PASS {n}" in lines for n in ("head", "screenshot", "review", "ci", "mergeable")), out
+    assert "FAIL head" in check(shown + review, headRefOid="0" * 40)[1], "the PR must be at the head that was checked"
+    for nothing in ("Fixes it.", "Screenshots are under `.artifacts/T-1` (not in git).", "![](.artifacts/T-1/after.png)",
+                    "| [app](https://vercel.com/x) | ![Ready](https://vercel.com/static/status/ready.svg) |"):
+        assert "shows no picture" in check(nothing + "\n" + review)[1]["FAIL screenshot"], nothing
+    assert 'TODO under "Not shown"' in check(shown.replace("dark mode", "TODO: say what this proof does not cover") + review)[1]["FAIL screenshot"]
+    assert "no `Review:` line" in check(shown)[1]["FAIL review"], "a UI change needs someone else's verdict"
+    assert "says CHANGES" in check(shown + review.replace("verdict PASS", "verdict CHANGES"))[1]["FAIL review"]
+    assert "older patch" in check(shown + review.replace(patch, "f" * 40))[1]["FAIL review"]
+    assert "failed: ci" in check(shown + review, statusCheckRollup=[{"name": "ci", "status": "COMPLETED", "conclusion": "FAILURE"}])[1]["FAIL ci"]
+    assert "still running" in check(shown + review, statusCheckRollup=[{"name": "ci", "status": "IN_PROGRESS", "conclusion": None}])[1]["FAIL ci"]
+    assert "SKIP ci" in check(shown + review, statusCheckRollup=[])[1]
+    assert "conflicts" in check(shown + review, mergeable="CONFLICTING")[1]["FAIL mergeable"]
+    assert "requests changes" in check(shown + review, reviewDecision="CHANGES_REQUESTED")[1]["FAIL mergeable"]
+
+
+def test_check_asks_nothing_about_screens_of_a_change_with_no_ui_file(tmp_path):
+    r = _proven_ticket(tmp_path, file="server/api.py", text="x = 1\n")
+    _row(r, "| the api answers | PASS | 4 | ran the test | after.txt |")
+    data = {"body": "Fixes it.", "comments": [], "statusCheckRollup": [], "mergeable": "MERGEABLE", "reviewDecision": "",
+            "headRefOid": _out("git", "-C", r, "rev-parse", "HEAD")}
+    code, lines, out = _check(r, "--pr", "7", env=_fake_gh(tmp_path, data))
+    assert code == 0 and "SKIP design" in lines and "SKIP screenshot" in lines and "SKIP review" in lines, out
+    (r / "AGENTS.md").write_text("# P\n\n## jstack settings\nintegration_branch: main\nverify_mode: always\n")
+    git(r, "commit", "-q", "-am", "always")
+    _row(r, "| the api answers | PASS | 4 | ran the test | after.txt |")
+    data["headRefOid"] = _out("git", "-C", r, "rev-parse", "HEAD")
+    assert "FAIL review" in _check(r, "--pr", "7", env=_fake_gh(tmp_path, data))[1], "`verify_mode: always` asks for a verdict on every change"
+
+
+# --- brief: what a worker is told does not depend on memory -----------------------------------
+
+def _brief(r, *args):
+    return run([BRIEF, "T-7", "--repo", r, "--goal", "Make the button blue", "--done-when", "the button is blue on the home page", *args], cwd=r)
+
+
+def test_brief_writes_a_brief_that_stands_alone_and_will_not_run_without_a_model(tmp_path):
+    """Of 143 sessions, the ones whose brief asked for the flow followed it 97% of the time; the others, 20%."""
+    r = repo(tmp_path, "# P\n\n## jstack settings\nintegration_branch: develop\nui_paths: app/**/*.css\n")
+    done = _brief(r, "--touches", "server/api.py, server/db.py", "--model", "model-x", "--effort", "low")
+    assert done.returncode == 0, done.stderr
+    for needed in ("Ticket T-7: Make the button blue", "Integration branch: develop.", "Touches: server/api.py, server/db.py.",
+                   "Done when: the button is blue on the home page", "`ticket` skill", "`checklist-init T-7`", "`check T-7 --pr <number>`",
+                   "Merge the PR into develop", "Do not ask the user anything", "report WAITING",
+                   "INTEGRATED <sha>, READY_FOR_INTEGRATOR, WAITING <condition> or BLOCKED(env|task|decision)", "what you did not verify"):
+        assert needed in done.stdout, needed
+    assert "Design:" not in done.stdout, "a ticket that touches no UI file gets no design block"
+    assert "start this worker on model-x at effort low" in done.stderr
+    ready = _brief(r, "--touches", "server/api.py", "--model", "m", "--effort", "low", "--stop-before-merge", "--note", "continue from RUNSTATE.md at abc")
+    assert "Do not merge." in ready.stdout and "Merge the PR into" not in ready.stdout and "- continue from RUNSTATE.md at abc" in ready.stdout
+    missing = _brief(r, "--touches", "server/api.py", "--effort", "low")
+    assert missing.returncode == 2 and missing.stdout == "", "a delegate that is not told its model inherits its parent's"
+    assert _brief(r, "--touches", " ", "--model", "m", "--effort", "low").returncode == 2, "a ticket with no files is not ready to launch"
+
+
+def test_brief_adds_the_design_block_when_the_ticket_may_touch_ui(tmp_path):
+    r = repo(tmp_path, "# P\n\n## jstack settings\nui_paths: app/**/*.css, **/*.tsx\ndesign_tokens: design/tokens.json\n")
+    block = lambda touches: "Design:" in _brief(r, "--touches", touches, "--model", "m", "--effort", "low").stdout
+    assert block("app/button.css") and block("app/") and block("app/**") and block("web/Home.tsx") and block("server/")
+    assert not block("docs/readme.md") and not block("server/api.py, server/db.py")
+    text = _brief(r, "--touches", "app/button.css", "--model", "m", "--effort", "low")
+    assert "design/tokens.json" in text.stdout and "`before-<state>.png`" in text.stdout and "`publish T-7 --pr <number>`" in text.stdout
+    assert "the design block is included" in text.stderr
+    (tmp_path / "plain").mkdir()
+    plain = repo(tmp_path / "plain")
+    assert "Design:" not in _brief(plain, "--touches", "app/x.css", "--model", "m", "--effort", "low").stdout, \
+        "with `ui_paths` empty the design gate is off"

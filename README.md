@@ -2,10 +2,11 @@
 
 [![ci](https://github.com/lopezsalaberry/jstack/actions/workflows/ci.yml/badge.svg)](https://github.com/lopezsalaberry/jstack/actions/workflows/ci.yml)
 
-A self-contained skill stack for shipping many independent tickets in parallel with coding
-agents, without review loops. Plain `skills/<name>/SKILL.md` folders plus a few small tools,
-usable from any harness that loads skill folders. Everything a skill needs ships inside this
-repo; the only outside requirements are `git`, `gh` and `python3`.
+A small skill stack for shipping tickets with coding agents: every change is proven on the real
+thing, shown to whoever reads the pull request, looked at by someone who did not write it when it
+matters, and merged without review loops. Five `skills/<name>/SKILL.md` folders and a few small
+tools, usable from any harness that loads skill folders. The only outside requirements are `git`,
+`gh` and `python3`.
 
 ## Quickstart
 
@@ -13,99 +14,84 @@ repo; the only outside requirements are `git`, `gh` and `python3`.
 2. **Install.**
    ```sh
    git clone https://github.com/lopezsalaberry/jstack.git ~/jstack
-   cd ~/jstack && git checkout v0.9.2      # pin a tag; upstream is never auto-synced
-   ./install.sh --dry-run                  # see what it would link
+   cd ~/jstack && ./install.sh --dry-run   # see what it would link
    ./install.sh
    ```
-   This links every skill into `~/.agents/skills` and `~/.claude/skills`, plus any
-   `--target DIR` you add. Same-name items are moved to `<dir>/.jstack-backup-<timestamp>/`.
-   Re-running is safe; `./install.sh --uninstall` removes only jstack links.
-3. **Check.** `./install.sh --doctor` says what is missing (`gh` login, settings, links).
-4. **Configure the repo you will work in.** Copy `templates/AGENTS.md` into its `AGENTS.md`
-   (and `templates/CLAUDE.md` next to it). Set `integration_branch`; leave the rest empty to start.
-5. **Run a ticket.** In that repo, tell your agent: *"full send ticket 123 using fanout"*, with the
-   ticket's goal and the files it expects to touch. For several tickets, list them all.
+   This links the skills into `~/.agents/skills` and `~/.claude/skills`, plus any `--target DIR`.
+   A same-name item is moved to `<dir>/.jstack-backup-<timestamp>/`. Re-running is safe;
+   `./install.sh --uninstall` removes only jstack links.
+3. **Give your agents the rules card.** Agents follow a rule only if they read it, so the eight
+   rules live in one short block. Put it where your harness always looks:
+   `./install.sh --card <repo>/AGENTS.md` for one repo (or copy `templates/AGENTS.md`, which also
+   has the settings block), or `--card` with the file your harness loads for every repo.
+4. **Check.** `./install.sh --doctor` says what is missing (`gh` login, the card, settings, links).
+5. **Run a ticket.** Tell your agent: *"full send ticket 123"*, with the ticket's goal, the files it
+   expects to touch and what must be true when it is done. For several tickets, list them all.
 
 Quota gating is off until you give it data: write lines like `claude acct1 63` to
-`.jstack/quota.txt` (any script can keep it fresh), or set `quota_probe` to your own command.
-Unknown quota never blocks work.
+`.jstack/quota.txt`, or set `quota_probe` to your own command. Unknown quota never blocks work.
 
 ## How it works
 
 ```
-ready tickets (one ticket = a queue of one)
-  └─ fanout ── quota-gate before each launch (launch, switch provider, or pause)
-       └─ worker per ticket (no questions, no nested fan-out)
-            ticket-start   scope check, worktree from origin/<integration branch>
-            full-send      prove (prove-it, verify-<app>, evidence) + per-ticket gate
-                           cross-review only if high-risk (1 round)
-                           file-pr, babysit-pr (fix-attempt ledger in the PR, no cap)
-                           merge when the Merge gate passes, or stop before merge
-            report INTEGRATED | READY_FOR_INTEGRATOR | WAITING | BLOCKED(env|task|decision)
+the rules card              eight rules, in a file every session reads
+wave                        one worker per ticket; `brief` writes each brief and makes you name the model
+  └─ ticket                 own worktree and branch → proof (`checklist-init`, levels 1 to 5)
+       │                    → pull request with a Before / After table (`publish`)
+       ├─ review            one round by someone else, for high-risk or user-visible changes
+       └─ check             the merge gate as one command; the worker pastes it, the orchestrator reruns it
+wave, when it drains        validate, decide, recap, ONE recommendation in ONE question
+status                      INTEGRATED | READY_FOR_INTEGRATOR | WAITING | BLOCKED(env|task|decision)
 ```
 
-Principles: parallel by default and limited by quota; one worker per distinct ticket, one
-level deep; integrate each green ticket; lean review; evidence from the delivered artifact
-before anything is published; budgets, not attempt caps (see `iterate`); measure integrated
-merges per day.
+A rule goes where it is sure to be followed: in a script when a command can check it, in the card
+when every session must know it, and in a skill only for what is left. `tests/test_budget.py` fails
+when the skills grow past a word budget, so a new paragraph has to replace an old one.
 
 ## Skills
 
 | Skill | Purpose |
 |---|---|
-| `jstack` | Settings, harness actions, status words and the `RUNSTATE.md` format every other skill uses; `doctor` |
-| `fanout` | Distinct tickets in parallel, one level, quota-limited; `wave-status` shows the wave |
-| `groom` | By hand: clean and rank the backlog, check what is ready, offer what to work on; changes nothing without a yes |
-| `wrap-up` | The last phase of a wave: validate what the workers reported, ask the operator before merging anything, recap and recommend the next step in one question |
-| `ticket-start` | Scope check, then worktree and branch per ticket |
-| `quota-gate` | Launch, switch provider or pause from model quota; ships a file-based `quota-probe` |
-| `full-send` | Prove, PR, babysit, integrate, or stop before merge; blocks a UI change that leaves the design system |
-| `takeover` | Finish or revive someone else's PR, keeping their credit |
-| `file-pr` | Open a real PR against the integration branch |
-| `babysit-pr` | Drive a PR to green with `pr-wait`; counts fix attempts (no cap) |
-| `iterate` | The measured loop that replaces attempt caps: hypothesis, smallest change, verdict, attack the premise, budgets are not failures |
-| `cross-review` | One round by an agent that did not write the change: break mode for high-risk changes (findings must be proven by a run), verify mode for user-visible ones (PASS, PASS+NOTES, FAIL) |
-| `prove-it` | Verify the real artifact before done; five levels of how sure you are; tests that prove something |
-| `evidence` | Local checklist with proof levels, screenshots, before/after output in `.artifacts/`; `proof-valid` says whether a proof still describes the patch |
-| `leaving-pr-comments` | How an agent posts PR comments on the user's behalf |
-| `create-verify` | Generate a project's `verify-<app>` (it lives in that project) |
-| `correct-mistakes` | Turn repeated agent mistakes into checks |
+| `jstack` | Reference: the rules card, settings, harness actions, status words, `RUNSTATE.md`; `doctor` |
+| `ticket` | One ticket from the first edit to the merged PR: worktree, proof, PR, `check`, merge. Tools: `checklist-init`, `proof-valid`, `token-lint`, `publish`, `check` |
+| `review` | One round by an agent that did not write the change: break mode for high-risk changes, verify mode for user-visible ones |
+| `wave` | Several tickets at once, quota and model choice, and the close: validate, recap, recommend. Tools: `brief`, `quota-probe`, `wave-status` |
+| `groom` | By hand: clean and rank the backlog and offer what to work on; changes nothing without a yes |
+
+`extras/` holds five more that are not installed by default (`./install.sh --extras`): `babysit-pr`
+with the `pr-wait` watcher for harnesses that cannot watch a PR, `takeover`, `leaving-pr-comments`,
+`create-verify` and `correct-mistakes`.
 
 ## UI changes
 
-Set `ui_paths` to mark which files are UI. Then the design gate applies twice. When a ticket is
-dispatched, `fanout` puts a Design block in its brief and `ticket-start` records a baseline and the
-components to reuse; a missing component stops the ticket with `BLOCKED(decision)` instead of being
-improvised. When the ticket is proved, `full-send` runs the design check (`token-lint` by default),
-compares screenshots with the design source, and the independent verifier checks the design lane too.
-A new off-token color, size or font blocks the merge. A tool can prove the tokens, not that the screen
-looks like the design, so a visual mismatch also blocks until someone decides.
+Set `ui_paths` to mark which files are UI. Then `brief` adds a design block to the worker's brief,
+the worker captures each screen before and after, `check` runs the design check (the shipped
+`token-lint` by default: no new color, size or font outside the design tokens) and refuses a pull
+request that shows no picture. A tool can prove the tokens, not that a screen looks like the design,
+so a mismatch the worker cannot resolve stops as `BLOCKED(decision)`.
 
 ## Settings
 
-One `## jstack settings` block in the repo's `AGENTS.md`, or `JSTACK_<KEY>` environment
-variables. Keys, defaults and precedence: the `jstack` skill. Read the resolved values with
-`skills/jstack/scripts/jstack-settings`.
+Nine keys. A repo's values go in a `## jstack settings` block of its `AGENTS.md`; the operator's own
+go in `~/.config/jstack/settings` for every repo on the machine; `JSTACK_<KEY>` overrides both. Keys
+and defaults: the `jstack` skill. `skills/jstack/scripts/jstack-settings` prints what was resolved.
 
 ## Stability
 
-Versions are tagged `vX.Y.Z` and every one has a section in [CHANGELOG.md](CHANGELOG.md).
-The public surface is: skill names, setting keys and their defaults, the command-line options of
-the shipped scripts, the status words, and the `RUNSTATE.md` header lines. While the major version
-is 0, a change to any of them is a minor-version bump and is listed under "Changed" or "Removed".
-`install.sh` deletes the link of a renamed or removed skill, so an upgrade does not leave dead
-entries. CI runs the tests and the linter on Linux and macOS (Python 3.12).
+Versions are tagged `vX.Y.Z` and each has a section in [CHANGELOG.md](CHANGELOG.md). The public
+surface is the skill names, the setting keys and defaults, the options of the shipped scripts, the
+status words, the rules card and the `RUNSTATE.md` header lines. `install.sh` deletes the link of a
+renamed or removed skill. CI runs the tests and the linter on Linux and macOS.
 
 ## When something goes wrong
 
-[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md). Iteration policy, quota order and typed
-`BLOCKED` states: [docs/OPERATING-MODEL.md](docs/OPERATING-MODEL.md).
+[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 
 ## Not included, on purpose
 
-Multi-model panels, arena or best-of races, score-until-perfect loops, formal verification,
-principle catalogs, screenshot upload tooling, and platform-specific checks (those belong in
-each project's `verify-<app>`).
+Multi-model panels, best-of races, score-until-perfect loops, formal verification, principle
+catalogs, a hosted upload service (the pictures of a pull request live in a ref of the repo itself)
+and platform-specific checks (those belong in each project's `verify-<app>`).
 
 ## Inspired by
 
@@ -113,14 +99,15 @@ jstack is built on ideas and some text from these projects. Exact commits and li
 [NOTICE](NOTICE).
 
 - **tstack** by Theo Browne, [t3dotgg/tstack](https://github.com/t3dotgg/tstack): the pull-request
-  lifecycle (`full-send`, `file-pr`, `babysit-pr`, `leaving-pr-comments`, the `pr-wait` watcher) and
-  the practice of cross-model review.
+  lifecycle behind `ticket` and `babysit-pr`, `leaving-pr-comments`, the `pr-wait` watcher and the
+  practice of cross-model review. The Before / After evidence table, "Not shown" and "Who did the
+  work" follow the pull requests of [pingdotgg/t3code](https://github.com/pingdotgg/t3code).
 - **pstack** by Cursor, [cursor/plugins](https://github.com/cursor/plugins/tree/main/pstack): the
-  hypothesis loop and verdicts behind `iterate`, `prove-it` and its proof levels, `create-verify`,
-  `correct-mistakes`, the fan-out pattern, and, from its shipping and babysit playbooks, the
-  independent verifier, the proof that follows the patch, the red-CI triage and the decision trail.
+  hypothesis loop and the proof levels in `ticket`, `create-verify`, `correct-mistakes`, the fan-out
+  pattern and the orchestrator that runs the program and not the code in `wave`, the independent
+  verifier, the proof that follows the patch and the red-CI triage.
 - **rstack** by Michael Shimeles, [michaelshimeles/rstack](https://github.com/michaelshimeles/rstack):
-  the ticket-start steps and the evidence protocol.
+  the ticket start steps and the evidence protocol.
 
 ## Development
 

@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # Create a verification skill
 
-> jstack: this generic skill lives in jstack. The generated `verify-<app>` lives and is versioned in each project repo, never in jstack. Start each project with one feature, and make sure the skill can drive the artifact the project actually delivers (what users install or open), because `full-send` uses it as evidence before publishing. Platform-specific checks belong in that project's `verify-<app>`, not here.
+> jstack: this generic skill lives in jstack. The generated `verify-<app>` lives and is versioned in each project repo, never in jstack. Start each project with one feature, and make sure the skill can drive the artifact the project actually delivers (what users install or open), because `ticket` uses it as evidence before publishing. Platform-specific checks belong in that project's `verify-<app>`, not here.
 
 Every serious project needs a scripted way to drive the real app and prove behavior: launch it, exercise a feature the way a user would, and capture evidence. This skill generates that as a project-local skill (`<skills>/verify-<app>/`) tailored to the repo. `<skills>` is your harness's project skill folder: `.cursor/skills/` in Cursor, `.claude/skills/` in Claude Code, `.pi/skills/` in Pi, `.agents/skills/` in Codex, OpenCode, and others. If the repo already keeps skills in one of these, use that one. You write the generator's output for the next agent, not for a human: it will be read cold, mid-task, by an agent that has never seen the app.
 

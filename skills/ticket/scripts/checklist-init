@@ -5,7 +5,7 @@
 
 Creates <dir>/<TICKET>/checklist.md with the current revision, the patch id (so `proof-valid` can later
 say whether the proof still describes the patch that will land; `empty` when the change does not exist yet, in
-which case `proof-valid --stamp` fills it in once the proof is final), the proof levels from `prove-it`, and an
+which case `proof-valid --stamp` fills it in once the proof is final), the proof levels from the `ticket` skill, and an
 empty table with one row to copy per target. Also keeps the artifacts folder out of commits through
 .git/info/exclude (local, never committed). Refuses to overwrite an existing checklist without --force.
 Exit 0 created, 1 already exists, 2 not in a git repo or no base branch.
@@ -25,7 +25,7 @@ Revision: {revision}
 Patch-id: {patch}
 Environment: {env}
 
-Levels (see `prove-it`): 1 you said so, 2 you pointed at the line, 3 you walked the failing case,
+Levels (see `ticket`): 1 you said so, 2 you pointed at the line, 3 you walked the failing case,
 4 you ran it, 5 you reproduced it in the delivered artifact. A target is PASS only at level 4 or 5.
 A target you could not exercise is FAIL, never skipped.
 

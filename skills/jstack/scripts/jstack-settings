@@ -3,10 +3,9 @@
 
   jstack-settings [--repo PATH] [--json] [KEY]
 
-Precedence: environment JSTACK_<KEY>, then the `## jstack settings` block of the repo's
-AGENTS.md (`key: value` lines), then the operator's own file (`key: value` lines, `#` comments;
-$JSTACK_USER_SETTINGS or ~/.config/jstack/settings, one for every repo on the machine), then the
-default. A repo's value replaces the operator's for that key. Without KEY prints every setting.
+Precedence: environment JSTACK_<KEY>, then the `## jstack settings` block of the repo's AGENTS.md
+(`key: value` lines), then the operator's own file (the same lines, for every repo on the machine:
+$JSTACK_USER_SETTINGS or ~/.config/jstack/settings), then the default. Without KEY prints every setting.
 """
 from __future__ import annotations
 
@@ -22,55 +21,43 @@ from pathlib import Path
 SKILLS = Path(__file__).resolve().parents[2]
 DEFAULTS = {
     "integration_branch": None,  # derived from the remote
-    "models": "",
-    "routing": "",
-    "reviewer_models": "auto",
-    "quota_probe": shlex.quote(str(SKILLS / "quota-gate" / "scripts" / "quota-probe")),  # a path may hold spaces
-    "quota_source": ".jstack/quota.txt",
-    "quota_max_age_minutes": "30",
-    "iteration_minutes": "60",
-    "max_parallel": "",
-    "review_bots": "",
-    "advisory_bots": "",
-    "verify_mode": "visible",
     "ui_paths": "",
     "design_tokens": "design/tokens.json",
     "design_check": "",
-    "posthoc_queue": "",
-    "paid_fallback": "off",
+    "verify_mode": "visible",
+    "reviewer_models": "auto",
+    "routing": "",
+    "max_parallel": "",
+    "quota_probe": shlex.quote(str(SKILLS / "wave" / "scripts" / "quota-probe")),  # a path may hold spaces
 }
+LINE = re.compile(r"^([a-z_]+):\s*(.*?)\s*$")
+
+
+def pairs(lines) -> dict[str, str]:
+    values = {}
+    for line in lines:
+        match = LINE.match(line)
+        if match:
+            values[match.group(1)] = re.sub(r"\s{2,}#.*$", "", match.group(2)).strip()
+    return values
 
 
 def block(agents: Path) -> dict[str, str]:
+    """The `key: value` lines under the `## jstack settings` heading, up to the next heading."""
     if not agents.is_file():
         return {}
-    values: dict[str, str] = {}
-    inside = False
+    inside, kept = False, []
     for line in agents.read_text().splitlines():
         if re.match(r"^#{1,6}\s", line):
             inside = bool(re.match(r"^#{1,6}\s*jstack settings\s*$", line, re.I))
-            continue
-        match = inside and re.match(r"^([a-z_]+):\s*(.*?)\s*$", line)
-        if match:
-            values[match.group(1)] = re.sub(r"\s{2,}#.*$", "", match.group(2)).strip()
-    return values
-
-
-def user_file(env) -> Path:
-    return Path(env.get("JSTACK_USER_SETTINGS") or Path.home() / ".config" / "jstack" / "settings")
+        elif inside:
+            kept.append(line)
+    return pairs(kept)
 
 
 def user_values(env) -> dict[str, str]:
-    """The operator's own settings: plain `key: value` lines for every repo on this machine."""
-    path = user_file(env)
-    if not path.is_file():
-        return {}
-    values: dict[str, str] = {}
-    for line in path.read_text().splitlines():
-        match = re.match(r"^([a-z_]+):\s*(.*?)\s*$", line)
-        if match:
-            values[match.group(1)] = re.sub(r"\s{2,}#.*$", "", match.group(2)).strip()
-    return values
+    path = Path(env.get("JSTACK_USER_SETTINGS") or Path.home() / ".config" / "jstack" / "settings")
+    return pairs(path.read_text().splitlines()) if path.is_file() else {}
 
 
 def default_branch(repo: Path) -> str:
@@ -81,8 +68,7 @@ def default_branch(repo: Path) -> str:
 
 def resolve(repo: Path, env: dict[str, str] | None = None) -> dict[str, str]:
     env = os.environ if env is None else env
-    configured = block(repo / "AGENTS.md")
-    mine = user_values(env)
+    configured, mine = block(repo / "AGENTS.md"), user_values(env)
     out: dict[str, str] = {}
     for key, default in DEFAULTS.items():
         if f"JSTACK_{key.upper()}" in env:
@@ -94,6 +80,28 @@ def resolve(repo: Path, env: dict[str, str] | None = None) -> dict[str, str]:
         else:
             out[key] = default if default is not None else default_branch(repo)
     return out
+
+
+def glob_re(glob: str) -> re.Pattern:
+    out, i = "", 0
+    while i < len(glob):
+        if glob[i:i + 3] == "**/":
+            out, i = out + "(?:.*/)?", i + 3
+        elif glob[i:i + 2] == "**":
+            out, i = out + ".*", i + 2
+        elif glob[i] == "*":
+            out, i = out + "[^/]*", i + 1
+        elif glob[i] == "?":
+            out, i = out + "[^/]", i + 1
+        else:
+            out, i = out + re.escape(glob[i]), i + 1
+    return re.compile("^" + out + "$")
+
+
+def ui_files(values: dict[str, str], files: list[str]) -> list[str]:
+    """The files that count as UI: those matching a glob of `ui_paths`. Empty `ui_paths` means none."""
+    patterns = [glob_re(g.strip()) for g in values["ui_paths"].split(",") if g.strip()]
+    return [f for f in files if any(p.match(f) for p in patterns)]
 
 
 def main() -> None:

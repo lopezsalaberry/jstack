@@ -8,7 +8,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SKILLS = sorted((ROOT / "skills").glob("*/SKILL.md"))
-PROSE = [*SKILLS, *ROOT.glob("docs/*.md"), ROOT / "README.md", ROOT / "templates/AGENTS.md", ROOT / "AGENTS.md"]
+EXTRAS = sorted((ROOT / "extras").glob("*/SKILL.md"))
+PROSE = [*SKILLS, *EXTRAS, *ROOT.glob("docs/*.md"), ROOT / "README.md", ROOT / "templates/AGENTS.md", ROOT / "AGENTS.md"]
 _loader = SourceFileLoader("jstack_settings", str(ROOT / "skills/jstack/scripts/jstack-settings"))
 settings = importlib.util.module_from_spec(importlib.util.spec_from_loader("jstack_settings", _loader))
 _loader.exec_module(settings)
@@ -27,7 +28,7 @@ def test_the_linter_passes():
 
 
 def test_every_script_a_skill_mentions_exists_and_is_executable():
-    shipped = {p.name: p for p in ROOT.glob("skills/*/scripts/*") if p.is_file()}
+    shipped = {p.name: p for d in ("skills", "extras") for p in ROOT.glob(f"{d}/*/scripts/*") if p.is_file()}
     for path in PROSE:
         for name in set(re.findall(r"scripts/([a-z][\w-]*)", path.read_text())):
             assert name in shipped, f"{path.relative_to(ROOT)} mentions scripts/{name}, which no skill ships"
@@ -71,7 +72,7 @@ def test_the_shipped_template_parses_with_the_shipped_reader(tmp_path):
     repo.mkdir()
     (repo / "AGENTS.md").write_text((ROOT / "templates/AGENTS.md").read_text())
     values = settings.resolve(repo, env={})
-    assert values["integration_branch"] == "main" and values["models"] == ""
+    assert values["integration_branch"] == "main" and values["ui_paths"] == "" and values["design_tokens"] == "design/tokens.json"
 
 
 def test_the_readme_lists_exactly_the_skills_that_ship():

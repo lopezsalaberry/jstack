@@ -1,0 +1,190 @@
+#!/usr/bin/env python3
+"""publish: put a ticket's before and after where the person reading the pull request can see them.
+
+  publish TICKET [--pr N] [--not-shown TEXT] [--repo PATH] [--base REF] [--web-base URL]
+                 [--max-files 8] [--max-mb 2] [--dry-run]
+
+`.artifacts/<ticket>/` is not in git, so a PR that says "screenshots are under .artifacts/" shows the reader nothing.
+This publishes the few files that carry the proof and prints an Evidence block for the PR description: one table,
+Before (the base commit) beside After (the head), one row per state.
+
+Name the files by what they show, in `.artifacts/<ticket>/`:
+  before-<state>.png  after-<state>.png   an image (png jpg gif webp) or a video (mp4 mov webm) of one state
+  before.txt          after.txt           the failing output before the fix and the passing output after it
+A state with only an `after-` file is something new. Other files in the folder are not published.
+
+The files go to `refs/jstack-evidence/<ticket>` on `origin`, a ref of its own: a normal `git fetch` or clone does not
+download it, no branch carries the images, and deleting the ref removes them. Git plumbing only: the working tree,
+the index and the repo's branches are not touched. With --pr N the block replaces the one an earlier run left in the PR
+description. Say what the proof does not cover with --not-shown; without it the block carries a TODO that `check` refuses.
+
+More than --max-files files, or one over --max-mb, is an error that names them: choose, do not upload the folder.
+Only a GitHub origin gives links a reader can open; otherwise pass --web-base https://github.com/<owner>/<repo>, or the
+files are listed and stay local. Exit 0 published (or --dry-run), 1 nothing to publish or a failure, 2 too many or too
+large files, an origin that cannot serve them, or a usage error.
+"""
+from __future__ import annotations
+
+import argparse
+import os
+import re
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+IMAGES = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+VIDEOS = {".mp4", ".mov", ".webm"}
+BEGIN = "<!-- jstack-evidence:begin -->"
+END = "<!-- jstack-evidence:end -->"
+TODO = "TODO: say what this proof does not cover"
+SETTINGS = Path(__file__).resolve().parents[2] / "jstack" / "scripts" / "jstack-settings"
+
+
+class Fail(Exception):
+    def __init__(self, message: str, code: int = 1):
+        super().__init__(message)
+        self.code = code
+
+
+def git(root: Path, *args: str, env: dict | None = None) -> str:
+    done = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True,
+                          env={**os.environ, "GIT_TERMINAL_PROMPT": "0", **(env or {})})
+    if done.returncode != 0:
+        raise Fail(f"git {' '.join(args[:2])} failed: {done.stderr.strip() or done.stdout.strip()}")
+    return done.stdout.strip()
+
+
+def web_base_of(url: str) -> str | None:
+    found = re.match(r"^(?:git@|ssh://git@|https?://(?:[^@/]+@)?)github\.com[:/]+([^/]+)/(.+?)(?:\.git)?/?$", url.strip())
+    return f"https://github.com/{found.group(1)}/{found.group(2)}" if found else None
+
+
+def collect(source: Path):
+    """{state: {"before": path, "after": path}} for the media, and the same for before.txt / after.txt."""
+    states: dict[str, dict[str, Path]] = {}
+    for path in sorted(p for p in source.iterdir() if p.is_file()):
+        found = re.fullmatch(r"(before|after)-(.+)", path.stem)
+        if found and path.suffix.lower() in IMAGES | VIDEOS:
+            states.setdefault(found.group(2), {})[found.group(1)] = path
+    output = {side: source / f"{side}.txt" for side in ("before", "after") if (source / f"{side}.txt").is_file()}
+    return states, output
+
+
+def identity(root: Path) -> dict:
+    def conf(key: str, fallback: str) -> str:
+        done = subprocess.run(["git", "-C", str(root), "config", key], capture_output=True, text=True)
+        return done.stdout.strip() or fallback
+    name, email = conf("user.name", "jstack"), conf("user.email", "jstack@localhost")
+    return {"GIT_AUTHOR_NAME": name, "GIT_AUTHOR_EMAIL": email, "GIT_COMMITTER_NAME": name, "GIT_COMMITTER_EMAIL": email}
+
+
+def commit_files(root: Path, ref: str, files: list[Path], revision: str, push: bool) -> tuple[str, dict]:
+    """Add the files to the ticket's evidence ref with plumbing and push it. Returns the commit and each file's path in it."""
+    parent = None
+    if git(root, "ls-remote", "origin", ref):
+        git(root, "fetch", "-q", "origin", ref)
+        parent = git(root, "rev-parse", "FETCH_HEAD")
+    paths = {}
+    with tempfile.TemporaryDirectory() as tmp:
+        env = {"GIT_INDEX_FILE": str(Path(tmp) / "index"), **identity(root)}
+        if parent:
+            git(root, "read-tree", parent, env=env)
+        for file in files:
+            paths[file] = f"{revision}/{file.name}"
+            git(root, "update-index", "--add", "--cacheinfo", f"100644,{git(root, 'hash-object', '-w', str(file))},{paths[file]}", env=env)
+        tree = git(root, "write-tree", env=env)
+        if parent and git(root, "rev-parse", f"{parent}^{{tree}}") == tree:
+            return parent, paths  # the same files were published before
+        commit = git(root, "commit-tree", tree, "-m", f"evidence at {revision}", *(["-p", parent] if parent else []), env=env)
+    if push:
+        git(root, "push", "-q", "origin", f"{commit}:{ref}")
+    return commit, paths
+
+
+def block(web: str, commit: str, base: str, head: str, states: dict, output: dict, paths: dict, not_shown: str) -> str:
+    def cell(side: str, state: str, path: Path | None) -> str:
+        if path is None:
+            return "(new)" if side == "before" else ""
+        url = f"{web}/blob/{commit}/{paths[path]}?raw=true"
+        label = f"{side.capitalize()}: {state.replace('-', ' ')}"
+        return f"![{label}]({url})" if path.suffix.lower() in IMAGES else f"[{label} (video)]({url})"
+
+    lines = [BEGIN, "## Evidence", "",
+             f"| | Before: [{base[:10]}]({web}/commit/{base}) | After: [{head[:10]}]({web}/commit/{head}) |", "|---|---|---|"]
+    for state, sides in states.items():
+        lines.append(f"| {state.replace('-', ' ')} | {cell('before', state, sides.get('before'))} | {cell('after', state, sides.get('after'))} |")
+    if output:
+        link = lambda side: f"[{side}.txt]({web}/blob/{commit}/{paths[output[side]]})" if side in output else ""
+        lines.append(f"| Output | {link('before')} | {link('after')} |")
+    lines += ["", f"**Not shown:** {not_shown}", END]
+    return "\n".join(lines)
+
+
+def put_in_pr(root: Path, number: str, text: str) -> None:
+    done = subprocess.run(["gh", "pr", "view", number, "--json", "body", "-q", ".body"], cwd=root, capture_output=True, text=True)
+    if done.returncode != 0:
+        raise Fail(f"gh pr view {number} failed: {done.stderr.strip()}")
+    body = re.sub(rf"\n*{re.escape(BEGIN)}.*?{re.escape(END)}\n*", "\n\n", done.stdout, flags=re.S).rstrip()
+    with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False) as handle:
+        handle.write(f"{body}\n\n{text}\n")
+    try:
+        edit = subprocess.run(["gh", "pr", "edit", number, "--body-file", handle.name], cwd=root, capture_output=True, text=True)
+    finally:
+        os.unlink(handle.name)
+    if edit.returncode != 0:
+        raise Fail(f"gh pr edit {number} failed: {edit.stderr.strip()}")
+
+
+def main(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("ticket")
+    ap.add_argument("--repo", type=Path, default=Path.cwd())
+    ap.add_argument("--pr")
+    ap.add_argument("--base")
+    ap.add_argument("--not-shown", default=TODO)
+    ap.add_argument("--web-base")
+    ap.add_argument("--max-files", type=int, default=8)
+    ap.add_argument("--max-mb", type=float, default=2)
+    ap.add_argument("--dry-run", action="store_true")
+    args = ap.parse_args(argv)
+    try:
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", args.ticket):
+            raise Fail(f"ticket {args.ticket!r} must be letters, digits, dot, dash or underscore", code=2)
+        root = Path(git(args.repo, "rev-parse", "--show-toplevel"))
+        source = root / ".artifacts" / args.ticket
+        if not source.is_dir():
+            raise Fail(f"{source} does not exist; capture the proof there first")
+        states, output = collect(source)
+        files = [p for sides in states.values() for p in sides.values()] + list(output.values())
+        if not files:
+            raise Fail(f"nothing to publish in {source}: name the files before-<state>.png and after-<state>.png (or before.txt, after.txt)")
+        large = [p.name for p in files if p.stat().st_size > args.max_mb * 1024 * 1024]
+        if len(files) > args.max_files or large:
+            why = f"{len(files)} files (limit {args.max_files})" if len(files) > args.max_files else f"over {args.max_mb:g} MB: {', '.join(large)}"
+            raise Fail(f"{why}. Keep the few that carry the proof (crop or shrink a large one); the rest stay in {source}", code=2)
+        origin = subprocess.run(["git", "-C", str(root), "remote", "get-url", "origin"], capture_output=True, text=True).stdout.strip()
+        web = (args.web_base or "").rstrip("/") or (web_base_of(origin) if origin else None)
+        if not web:
+            names = "\n".join(f"  {p}" for p in files)
+            raise Fail(f"origin ({origin or 'none'}) cannot serve these to a reader, so they stay local; show them in your "
+                       f"message, or pass --web-base https://github.com/<owner>/<repo>:\n{names}", code=2)
+        head = git(root, "rev-parse", "HEAD")
+        branch = args.base or "origin/" + subprocess.run([sys.executable, str(SETTINGS), "--repo", str(root), "integration_branch"],
+                                                         capture_output=True, text=True).stdout.strip()
+        base = git(root, "merge-base", branch, "HEAD")
+        commit, paths = commit_files(root, f"refs/jstack-evidence/{args.ticket}", files, head[:10], push=not args.dry_run)
+        text = block(web, commit, base, head, states, output, paths, args.not_shown.strip() or TODO)
+        if args.pr and not args.dry_run:
+            put_in_pr(root, args.pr, text)
+        where = "prepared, nothing pushed" if args.dry_run else f"published; PR #{args.pr} description updated" if args.pr else "published; paste the block below into the PR description"
+        print(f"publish: {len(files)} file(s) {where}", file=sys.stderr)
+        print(text)
+        return 0
+    except Fail as error:
+        print(f"publish: {error}", file=sys.stderr)
+        return error.code
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

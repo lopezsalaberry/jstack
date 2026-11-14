@@ -2,6 +2,27 @@
 
 Format follows Keep a Changelog. Versions are tagged `vX.Y.Z`; install a tag, not `main`.
 
+## 0.10.1
+
+The reader of a pull request can see the screenshots. Measured over two weeks of four real repos: of 214 pull requests that
+touched UI files, 3 showed an image, 103 said the screenshots were "under `.artifacts/`" (a folder that is not in git, so the
+reader sees nothing), 50 only named the word and 58 said nothing. `evidence` told agents to attach screenshots "when the harness
+can attach files", and `gh` cannot.
+
+### Added
+- `evidence/scripts/publish TICKET [--pr N]`: copies the images and videos of `.artifacts/<ticket>/` to a `jstack-evidence`
+  branch of `origin` (git plumbing: the working tree, the index and the repo's branches are not touched; one commit per run; the
+  same files twice make no second commit) and prints markdown that shows them. With `--pr` it puts the block in the PR
+  description, replacing an earlier run's. A non-GitHub origin gets the list of files and exit 2 instead of a broken link.
+- `evidence/scripts/pr-evidence-check --pr N`: exits 1 when a change to `ui_paths` files has no picture or video a reviewer can
+  open in its PR or comments. A path under `.artifacts/`, a status badge and an avatar do not count.
+
+### Changed
+- `templates/AGENTS.md` (marker 0.10.1): rule 6 asks every UI change to show a screenshot in its PR and the before and after in
+  the agent's own messages. Repos with an older copy show up as `stale` in `template-drift` and `doctor`.
+- `full-send`'s merge gate asks for `pr-evidence-check` instead of "screenshots attached", and `wrap-up` runs it for UI changes.
+- `evidence` step 4 says what `.artifacts/` is not.
+
 ## 0.10.0
 
 The orchestrator chooses the model for each task, and a review always has somewhere to go. Found by reading the last

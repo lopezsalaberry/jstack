@@ -1,6 +1,7 @@
 """Behavior of the tools the skills ship. Each test runs the real script."""
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -659,13 +660,16 @@ def test_template_drift_names_old_copies(tmp_path):
     old = make("old", current.replace(marker, "<!-- jstack-template: 0.1.0 -->"))
     unmarked = make("unmarked", current.replace(marker + "\n\n", ""))
     newer = make("newer", current.replace(marker, "<!-- jstack-template: 99.0.0 -->"))
-    ten = make("ten", current.replace(marker, "<!-- jstack-template: 0.10.0 -->"))   # 0.10.0 is newer than 0.9.3
+    major, minor, _ = map(int, re.search(r"(\d+)\.(\d+)\.(\d+)", marker).groups())
+    # A version whose order as numbers differs from its order as text: 0.9.9 against 0.10.x, 0.10.0 against 0.9.x.
+    tricky, tricky_status = ((f"{major}.9.9", "stale") if minor >= 10 else (f"{major}.10.0", "ahead"))
+    ten = make("ten", current.replace(marker, f"<!-- jstack-template: {tricky} -->"))
     plain = make("plain", "# Something else\n")
     empty = tmp_path / "empty"
     empty.mkdir()
     done = run([TEMPLATE_DRIFT, fresh, old, unmarked, newer, ten, plain, empty], cwd=tmp_path)
     status = {Path(line.split()[1].rstrip(":")).name: line.split()[0] for line in done.stdout.splitlines()}
-    assert status == {"fresh": "ok", "old": "stale", "unmarked": "stale", "newer": "ahead", "ten": "ahead", "plain": "skip", "empty": "skip"}
+    assert status == {"fresh": "ok", "old": "stale", "unmarked": "stale", "newer": "ahead", "ten": tricky_status, "plain": "skip", "empty": "skip"}
     assert done.returncode == 1
     assert run([TEMPLATE_DRIFT, fresh, plain], cwd=tmp_path).returncode == 0
     assert run([TEMPLATE_DRIFT, tmp_path / "missing"], cwd=tmp_path).returncode == 2
@@ -727,3 +731,141 @@ def test_doctor_is_quiet_about_the_version_when_the_checkout_is_current_or_canno
     offline = _checkout(tmp_path / "b", "0.9.3", None)
     out = run([offline / "skills/jstack/scripts/doctor", "--repo", r, "--check-updates"], cwd=tmp_path, env=path)
     assert "warn jstack is the newest version: could not ask origin" in out.stdout and out.returncode == 0, out.stdout
+
+
+# --- screenshots in the pull request ----------------------------------------
+
+PUBLISH = ROOT / "skills/evidence/scripts/publish"
+EVIDENCE_CHECK = ROOT / "skills/evidence/scripts/pr-evidence-check"
+
+
+def _with_origin(tmp_path, name="origin.git"):
+    bare = tmp_path / name
+    bare.mkdir()
+    git(bare, "init", "-q", "--bare")
+    r = repo(tmp_path)
+    git(r, "remote", "add", "origin", str(bare))
+    return r, bare
+
+
+def _fake_gh(tmp_path, body):
+    """A gh that serves `pr view` from a file and stores what `pr edit --body-file` is given."""
+    bin_dir = tmp_path / "ghbin"
+    bin_dir.mkdir(exist_ok=True)
+    (tmp_path / "gh-body.txt").write_text(body)
+    (bin_dir / "gh").write_text(
+        "#!/usr/bin/env python3\nimport json, sys, pathlib\na = sys.argv[1:]\nbase = pathlib.Path(__file__).parent.parent\n"
+        "if a[:2] == ['pr', 'view']:\n    body = (base / 'gh-body.txt').read_text()\n"
+        "    print(json.dumps({'body': body, 'comments': []}) if '--json' in a and 'body,comments' in a else body)\n"
+        "elif a[:2] == ['pr', 'edit']:\n    (base / 'gh-edited.txt').write_text(pathlib.Path(a[a.index('--body-file') + 1]).read_text())\n")
+    (bin_dir / "gh").chmod(0o755)
+    return {"PATH": f"{bin_dir}:{os.environ['PATH']}"}
+
+
+def test_publish_shows_the_screenshots_from_a_branch_that_is_not_the_change(tmp_path):
+    """2026-11: 103 of 214 UI pull requests said the screenshots were under .artifacts/ (not in git); 3 showed one."""
+    r, bare = _with_origin(tmp_path)
+    shots = r / ".artifacts" / "T-1"
+    shots.mkdir(parents=True)
+    (shots / "01-start.png").write_bytes(b"png1")
+    (shots / "02-end.png").write_bytes(b"png2")
+    (shots / "clip.mov").write_bytes(b"mov")
+    (shots / "notes.txt").write_text("not an image")
+    (shots / "huge.png").write_bytes(b"x" * 3000)
+    head = subprocess.run(["git", "-C", str(r), "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
+    done = run([PUBLISH, "T-1", "--repo", r, "--web-base", "https://example.test/o/r", "--max-mb", "0.001"], cwd=tmp_path)
+    assert done.returncode == 0, (done.stdout, done.stderr)
+    commit = subprocess.run(["git", "-C", str(bare), "rev-parse", "jstack-evidence"], capture_output=True, text=True).stdout.strip()
+    assert f"![01-start](https://example.test/o/r/blob/{commit}/T-1/{head}/01-start.png?raw=true)" in done.stdout
+    assert f"[clip (video)](https://example.test/o/r/blob/{commit}/T-1/{head}/clip.mov?raw=true)" in done.stdout
+    assert "notes.txt" not in done.stdout and "huge.png" not in done.stdout and "skipped huge.png" in done.stderr
+    tree = subprocess.run(["git", "-C", str(bare), "ls-tree", "-r", "--name-only", "jstack-evidence"], capture_output=True, text=True).stdout
+    assert f"T-1/{head}/02-end.png" in tree.splitlines()
+    branches = subprocess.run(["git", "-C", str(r), "branch", "--list"], capture_output=True, text=True).stdout
+    assert "jstack-evidence" not in branches and subprocess.run(["git", "-C", str(r), "diff", "--cached", "--quiet"]).returncode == 0, \
+        "the repo's own branches and index are not touched"
+    again = run([PUBLISH, "T-1", "--repo", r, "--web-base", "https://example.test/o/r", "--max-mb", "0.001"], cwd=tmp_path)
+    assert subprocess.run(["git", "-C", str(bare), "rev-parse", "jstack-evidence"], capture_output=True, text=True).stdout.strip() == commit, \
+        "the same files published twice make no second commit"
+    other = r / ".artifacts" / "T-2"
+    other.mkdir()
+    (other / "a.png").write_bytes(b"other")
+    assert run([PUBLISH, "T-2", "--repo", r, "--web-base", "https://example.test/o/r"], cwd=tmp_path).returncode == 0
+    tree = subprocess.run(["git", "-C", str(bare), "ls-tree", "-r", "--name-only", "jstack-evidence"], capture_output=True, text=True).stdout
+    assert f"T-1/{head}/01-start.png" in tree and f"T-2/{head}/a.png" in tree, "a later ticket keeps the earlier ones"
+    assert again.returncode == 0
+
+
+def test_publish_does_not_pretend_when_the_origin_cannot_serve_images_or_there_is_nothing(tmp_path):
+    r, bare = _with_origin(tmp_path)
+    assert run([PUBLISH, "T-9", "--repo", r], cwd=tmp_path).returncode == 1, "no .artifacts folder for the ticket"
+    shots = r / ".artifacts" / "T-9"
+    shots.mkdir(parents=True)
+    assert run([PUBLISH, "T-9", "--repo", r], cwd=tmp_path).returncode == 1, "a folder with no images"
+    (shots / "a.png").write_bytes(b"x")
+    local = run([PUBLISH, "T-9", "--repo", r], cwd=tmp_path)           # a bare repo on disk is not a web address
+    assert local.returncode == 2 and "stay local" in local.stderr and "a.png" in local.stderr, (local.stdout, local.stderr)
+    assert subprocess.run(["git", "-C", str(bare), "branch", "--list"], capture_output=True, text=True).stdout.strip() == "", \
+        "nothing was pushed"
+
+
+def test_publish_replaces_its_block_in_the_pull_request_description(tmp_path):
+    r, _ = _with_origin(tmp_path)
+    shots = r / ".artifacts" / "T-3"
+    shots.mkdir(parents=True)
+    (shots / "01.png").write_bytes(b"x")
+    old = "Fixes the pill.\n\n<!-- jstack-evidence:begin -->\nOLD BLOCK\n<!-- jstack-evidence:end -->\n\nCross-review: none\n"
+    env = _fake_gh(tmp_path, old)
+    done = run([PUBLISH, "T-3", "--repo", r, "--pr", "12", "--web-base", "https://example.test/o/r"], cwd=tmp_path, env=env)
+    assert done.returncode == 0, done.stderr
+    edited = (tmp_path / "gh-edited.txt").read_text()
+    assert "OLD BLOCK" not in edited and edited.count("jstack-evidence:begin") == 1
+    assert "Fixes the pill." in edited and "Cross-review: none" in edited, "the rest of the description is kept"
+    assert "![01](https://example.test/o/r/blob/" in edited
+
+
+def _ui_branch(tmp_path, ui_paths="app/**/*.tsx", file="app/Button.tsx"):
+    r = repo(tmp_path, f"# P\n\n## jstack settings\nintegration_branch: main\nui_paths: {ui_paths}\n")
+    git(r, "checkout", "-q", "-b", "feat")
+    (r / file).parent.mkdir(parents=True, exist_ok=True)
+    (r / file).write_text("export const Button = () => null\n")
+    git(r, "add", "-A")
+    git(r, "commit", "-q", "-m", "change")
+    return r
+
+
+def test_a_ui_change_needs_a_screenshot_the_reviewer_can_open(tmp_path):
+    r = _ui_branch(tmp_path)
+    body = tmp_path / "body.md"
+    check = lambda text: (body.write_text(text), run([EVIDENCE_CHECK, "--repo", r, "--base", "main", "--body-file", body], cwd=tmp_path))[1]
+    for nothing in ("Fixes the pill.", "Screenshots are under `.artifacts/LOUD-432` (not in git).",
+                    "![](.artifacts/T/01.png)", "| [smally](https://vercel.com/x) | ![Ready](https://vercel.com/static/status/ready.svg) |",
+                    "![build](https://img.shields.io/badge/build-passing-green)"):
+        bad = check(nothing)
+        assert bad.returncode == 1 and "shows no screenshot" in bad.stderr, (nothing, bad.stdout, bad.stderr)
+    for shown in ("![a](https://example.test/o/r/blob/abc/T/1.png?raw=true)",
+                  '<img width="300" src="https://github.com/user-attachments/assets/abc-123">',
+                  "[clip](https://example.test/x/demo.mp4)"):
+        ok = check(shown)
+        assert ok.returncode == 0 and "ok," in ok.stdout, (shown, ok.stdout, ok.stderr)
+
+
+def test_the_screenshot_check_only_applies_to_ui_changes_and_when_the_gate_is_on(tmp_path):
+    body = tmp_path / "body.md"
+    body.write_text("nothing to see")
+    docs = _ui_branch(tmp_path, file="docs/readme.md")
+    done = run([EVIDENCE_CHECK, "--repo", docs, "--base", "main", "--body-file", body], cwd=tmp_path)
+    assert done.returncode == 0 and "nothing to show" in done.stdout, (done.stdout, done.stderr)
+    (tmp_path / "off").mkdir()
+    off = _ui_branch(tmp_path / "off", ui_paths="")
+    done = run([EVIDENCE_CHECK, "--repo", off, "--base", "main", "--body-file", body], cwd=tmp_path)
+    assert done.returncode == 0 and "off" in done.stdout
+
+
+def test_the_screenshot_check_reads_the_pull_request_and_its_comments(tmp_path):
+    r = _ui_branch(tmp_path)
+    env = _fake_gh(tmp_path, "![a](https://example.test/x.png)")
+    done = run([EVIDENCE_CHECK, "--repo", r, "--base", "main", "--pr", "7"], cwd=tmp_path, env=env)
+    assert done.returncode == 0 and "ok," in done.stdout, (done.stdout, done.stderr)
+    env = _fake_gh(tmp_path, "no pictures here")
+    assert run([EVIDENCE_CHECK, "--repo", r, "--base", "main", "--pr", "7"], cwd=tmp_path, env=env).returncode == 1

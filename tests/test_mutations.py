@@ -78,6 +78,15 @@ MUTATIONS = {
     "a mark months away is accepted": (
         "skills/quota-gate/scripts/quota-probe", "    if when > now + MAX_UNTIL_DAYS * 86400:", "    if False:",
         "tests/test_tools.py::test_until_marks_a_provider_for_as_long_as_its_refusal_lasts"),
+    "publishing a second ticket drops the first one's pictures": (
+        "skills/evidence/scripts/publish", '            git(root, "read-tree", parent, env=env)', "            pass",
+        "tests/test_tools.py::test_publish_shows_the_screenshots_from_a_branch_that_is_not_the_change"),
+    "a status badge counts as a screenshot": (
+        "skills/evidence/scripts/pr-evidence-check", "        if NOT_EVIDENCE.search(line):", "        if False:",
+        "tests/test_tools.py::test_a_ui_change_needs_a_screenshot_the_reviewer_can_open"),
+    "a change with no UI file still needs a screenshot": (
+        "skills/evidence/scripts/pr-evidence-check", "    if not ui_files:", "    if False:",
+        "tests/test_tools.py::test_the_screenshot_check_only_applies_to_ui_changes_and_when_the_gate_is_on"),
     "a bot that never reviews is still waited for": (
         "skills/babysit-pr/scripts/pr-wait", "if green and (reviewed or not GATING_BOTS):", "if green and reviewed:",
         "tests/test_tools.py::test_pr_wait_ready_does_not_wait_for_bots_that_are_not_configured"),

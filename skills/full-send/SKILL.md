@@ -98,8 +98,8 @@ reproduction, a screenshot. Use the most direct proof the change allows:
   with the screenshot beside the design, never a merge. Anything the design does not show (a new
   state or component) goes back to the design system first.
 - For UI and runtime behavior, run the app and look at the change. Green mocked
-  tests do not prove that the user experience works. Attach screenshots to the
-  PR when they help and you have a way to upload them.
+  tests do not prove that the user experience works. For anything on a screen,
+  put screenshots in the PR with `evidence/scripts/publish` (see `evidence`).
 
 Grade each proof by the levels in `prove-it` ("How sure are you") and write the level next
 to every `PASS`. Levels 1 to 3 are "unproven", not a pass. For a bug fix, keep the failing
@@ -115,7 +115,8 @@ Full confidence means all of these are true on the latest commit:
 
 - Your proof covers every change in the diff, and `evidence/scripts/proof-valid` confirms it
   still describes the patch that will land (a rebase changes the commit, not the patch).
-- A UI change has a clean design check and its screenshots attached.
+- A UI change has a clean design check and a screenshot its PR shows: `evidence/scripts/pr-evidence-check
+  --pr <number>` exits 0. A path under `.artifacts/` is not a screenshot.
 - A user-visible change also has a verify-mode verdict of `PASS` or `PASS+NOTES` that covers
   this patch, unless `verify_mode` is `off`.
 - The per-ticket gate (tests, lint, build for the touched scope, and the

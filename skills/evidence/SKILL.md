@@ -44,6 +44,20 @@ to make it pass.
 
 ## 4. Report
 
-Paste the checklist summary into the PR description and attach the
-screenshots or video when the harness can attach files. Do not publish
+Paste the checklist summary into the PR description. A path under
+`.artifacts/` is not evidence for the person reading the PR: that folder is not
+in git, and a PR that says "screenshots are under .artifacts/" shows nothing.
+
+When anything on a screen changed, run `scripts/publish <ticket> --pr <number>`.
+It copies the images and videos to the `jstack-evidence` branch of `origin` (a
+branch no change is merged from, so the change stays small) and puts them in the
+PR description as pictures, replacing the block of an earlier run. Run it again
+after the proof changes. It works only for a GitHub origin; for any other, it
+says so and lists the files: show them in your message instead. Do not publish
 evidence anywhere else.
+
+Show the screenshots that matter while you work, not only at the end: the
+before and the after of a visible change belong in your own message, as images
+when the harness renders them. `scripts/pr-evidence-check --pr <number>`
+exits 1 when a change to `ui_paths` files has no picture a reviewer can open in
+its PR.

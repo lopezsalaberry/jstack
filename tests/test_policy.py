@@ -218,7 +218,7 @@ def test_a_reviewer_is_probed_before_it_is_started_and_the_ledger_shows_it():
 # `doctor` tell a repo its copy is old by comparing the marker on the template's first line, so the marker must move when
 # the template does. When this fails: bump the marker to the release that changes the template, say so under that release in
 # CHANGELOG.md (mention `templates/AGENTS.md`), and pin the new hash here.
-TEMPLATE_BODY_SHA256 = "ea6c32e32ce368f49a90e27f2eefd4a92732d4a811bf71cf0ce50c1d2891658e"
+TEMPLATE_BODY_SHA256 = "301bb388d18157577f62ab92d30607fe32a9eff5a908fc820006f05a1464651b"
 
 
 def test_the_template_marker_moves_when_the_template_does():

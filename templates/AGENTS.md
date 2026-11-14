@@ -1,4 +1,4 @@
-<!-- jstack-template: 0.9.3 -->
+<!-- jstack-template: 0.10.1 -->
 
 ## End-to-end flow (jstack)
 
@@ -7,7 +7,7 @@
 3. Each green ticket merges into the integration branch named in the settings below.
 4. Prove every change on the real artifact (`prove-it`, this repo's `verify-<app>`, tests, lint, build). Start the evidence with the `evidence` skill's `checklist-init <ticket>` (it fills in the revision; once the proof is final, `proof-valid --stamp` fills in the patch id) and give every PASS its proof level, 1 to 5 (`prove-it`). A bug fix keeps `before.txt` and `after.txt` in `.artifacts/<ticket>/`. Cross-model review only for `cross-review`'s high-risk list, 1 round.
 5. On repeated failure follow `iterate` (no attempt cap: keep going while the checks move, stop by its rules). On quota follow `quota-gate`.
-6. UI changes (files matching `ui_paths` in the settings below): use only the tokens and components of the design system (`design_tokens`). If a ticket asks for a value they do not have (a size, a color, a font), do not hard-code it, even when the ticket gives the exact value: stop with `BLOCKED(decision)` naming the missing piece, so the design system is extended first (`ticket-start`, `full-send`).
+6. UI changes (files matching `ui_paths` in the settings below): use only the tokens and components of the design system (`design_tokens`). If a ticket asks for a value they do not have (a size, a color, a font), do not hard-code it, even when the ticket gives the exact value: stop with `BLOCKED(decision)` naming the missing piece, so the design system is extended first (`ticket-start`, `full-send`). Every UI change shows a screenshot in its PR: run `evidence/scripts/publish <ticket> --pr <number>` (a path under `.artifacts/` shows the reader nothing), and put the before and after in your own messages.
 7. A user-visible ticket that reports `INTEGRATED` moves to review in the tracker, not to done, with the PR and the proof, until the operator accepts.
 
 ## Session rules (any task)

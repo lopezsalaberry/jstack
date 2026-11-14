@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+"""pr-evidence-check: a change to the UI must show at least one screenshot in its pull request.
+
+  pr-evidence-check [--repo PATH] [--base REF] (--pr N | --body-file FILE)
+
+Applies only when a file this change touches (against BASE, default `origin/<integration_branch>`) matches the `ui_paths`
+setting; with `ui_paths` empty the design gate is off and so is this. The PR description and, with --pr, its comments must
+hold a picture or a video a reviewer can open: a markdown image, an <img>, a GitHub attachment, or a link to an image or video
+file over http(s). A path under `.artifacts/` is not one (that folder is not in git), and neither is a status badge or an avatar.
+`scripts/publish` makes the block that passes this check.
+
+This checks that a screenshot is shown, not that it shows every changed screen or that the screen is right: the design check and
+the reviewer do that. Exit 0 ok or not applicable, 1 a UI change with no visible screenshot, 2 usage error.
+"""
+from __future__ import annotations
+
+import argparse
+import re
+import subprocess
+import sys
+from importlib.machinery import SourceFileLoader
+import importlib.util
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+_loader = SourceFileLoader("jstack_settings", str(HERE.parents[1] / "jstack" / "scripts" / "jstack-settings"))
+settings = importlib.util.module_from_spec(importlib.util.spec_from_loader("jstack_settings", _loader))
+_loader.exec_module(settings)
+
+MEDIA = r"(?:png|jpe?g|gif|webp|svg|mp4|mov|webm)"
+PICTURE = [
+    re.compile(r"!\[[^\]]*\]\(\s*<?https?://[^)\s>]+"),                       # ![alt](https://...)
+    re.compile(r"<img\b[^>]*\bsrc=[\"']https?://[^\"']+", re.I),             # <img src="https://...">
+    re.compile(r"https://github\.com/user-attachments/\S+"),                  # a file dropped into the PR box
+    re.compile(r"https://private-user-images\.githubusercontent\.com/\S+"),
+    re.compile(rf"\]\(\s*<?https?://[^)\s>]+\.{MEDIA}(?:\?[^)\s>]*)?\)", re.I),   # [video](https://.../x.mp4)
+]
+NOT_EVIDENCE = re.compile(r"vercel\.com/static|vercel\.com/api/www/avatar|vercel\.sh|shields\.io|/badge(?:\.svg|/)|"
+                          r"avatars\.githubusercontent\.com|codecov\.io|badgen\.net", re.I)
+
+
+def glob_re(glob: str) -> re.Pattern:
+    out, i = "", 0
+    while i < len(glob):
+        if glob[i:i + 3] == "**/":
+            out, i = out + "(?:.*/)?", i + 3
+        elif glob[i:i + 2] == "**":
+            out, i = out + ".*", i + 2
+        elif glob[i] == "*":
+            out, i = out + "[^/]*", i + 1
+        elif glob[i] == "?":
+            out, i = out + "[^/]", i + 1
+        else:
+            out, i = out + re.escape(glob[i]), i + 1
+    return re.compile("^" + out + "$")
+
+
+def pictures(text: str) -> list[str]:
+    found = []
+    for line in text.splitlines():
+        if NOT_EVIDENCE.search(line):
+            continue
+        for pattern in PICTURE:
+            found += [m.group(0) for m in pattern.finditer(line)]
+    return found
+
+
+def changed_files(repo: Path, base: str) -> list[str]:
+    def git(*a: str) -> str:
+        done = subprocess.run(["git", "-C", str(repo), *a], capture_output=True, text=True)
+        if done.returncode != 0:
+            raise SystemExit(f"pr-evidence-check: git {' '.join(a)}: {done.stderr.strip()}")
+        return done.stdout.strip()
+    fork = git("merge-base", base, "HEAD")
+    return [f for f in git("diff", "--name-only", fork, "HEAD").splitlines() if f]
+
+
+def main(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--repo", type=Path, default=Path.cwd())
+    ap.add_argument("--base")
+    group = ap.add_mutually_exclusive_group(required=True)
+    group.add_argument("--pr")
+    group.add_argument("--body-file", type=Path)
+    args = ap.parse_args(argv)
+    values = settings.resolve(args.repo)
+    ui_paths = [p.strip() for p in values["ui_paths"].split(",") if p.strip()]
+    if not ui_paths:
+        print("pr-evidence-check: ui_paths is empty, so the design gate and this check are off")
+        return 0
+    base = args.base or f"origin/{values['integration_branch']}"
+    patterns = [glob_re(p) for p in ui_paths]
+    ui_files = [f for f in changed_files(args.repo, base) if any(p.match(f) for p in patterns)]
+    if not ui_files:
+        print("pr-evidence-check: no changed file matches ui_paths; nothing to show")
+        return 0
+    if args.body_file:
+        text = args.body_file.read_text()
+    else:
+        done = subprocess.run(["gh", "pr", "view", args.pr, "--json", "body,comments"], cwd=args.repo, capture_output=True, text=True)
+        if done.returncode != 0:
+            print(f"pr-evidence-check: gh pr view {args.pr} failed: {done.stderr.strip()}", file=sys.stderr)
+            return 2
+        import json
+        data = json.loads(done.stdout)
+        text = (data.get("body") or "") + "\n" + "\n".join(c.get("body", "") for c in data.get("comments", []))
+    shown = pictures(text)
+    if shown:
+        print(f"pr-evidence-check: ok, {len(shown)} picture(s) or video(s) shown for {len(ui_files)} changed UI file(s)")
+        return 0
+    print(f"pr-evidence-check: {len(ui_files)} UI file(s) changed (for example {ui_files[0]}) and the pull request shows no screenshot. "
+          "A path under .artifacts/ is not one. Run `evidence/scripts/publish <ticket> --pr <number>`.", file=sys.stderr)
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

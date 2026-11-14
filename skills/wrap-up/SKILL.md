@@ -26,6 +26,8 @@ log; the recap in step 4 is what the operator reads.
    - Proof: `evidence/scripts/proof-valid --base origin/<integration branch>` against the checklist or patch id in
      the PR description. A checklist with an empty `Patch-id:`, or none, is "proof without anchor": rely on your own
      rerun. Rerun the gate the ticket's `Done when:` names, focused.
+   - Screens: for a change to `ui_paths` files, run `evidence/scripts/pr-evidence-check --pr <number>`. A PR that
+     shows no screenshot goes back; do not take the images from `.artifacts/` on the worker's word.
    - Criteria: mark each one met, not met, or pending the operator. A criterion the worker rewrote is a decision
      for the operator, never met.
    - CI: a job that never ran is neither a pass nor a failure (`babysit-pr`, "When CI is red"): say "CI did not

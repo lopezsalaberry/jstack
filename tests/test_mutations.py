@@ -78,7 +78,7 @@ MUTATIONS = {
         "skills/ticket/scripts/publish", "        if len(files) > args.max_files or large:", "        if False:",
         "tests/test_tools.py::test_publish_refuses_the_folder_a_big_file_and_an_origin_nobody_can_open"),
     "a PASS that nobody ran passes the gate": (
-        "skills/ticket/scripts/check", '        weak = [t for t, result, level in targets if result == "PASS" and level not in ("4", "5")]',
+        "skills/ticket/scripts/check", '        weak = [t for t, result, level, _ in targets if result == "PASS" and level not in ("4", "5")]',
         "        weak = []",
         "tests/test_tools.py::test_check_passes_a_proven_change_and_names_what_is_missing"),
     "a change edited after its proof passes the gate": (
@@ -101,7 +101,7 @@ MUTATIONS = {
         "skills/ticket/scripts/check", '            if not ui:\n                say("SKIP", "screenshot"', '            if False:\n                say("SKIP", "screenshot"',
         "tests/test_tools.py::test_check_asks_nothing_about_screens_of_a_change_with_no_ui_file"),
     "an unproven target passes the gate": (
-        "skills/ticket/scripts/check", '        failed = [t for t, result, _ in targets if result != "PASS"]', "        failed = []",
+        "skills/ticket/scripts/check", '        failed = [t for t, result, *_ in targets if result != "PASS"]', "        failed = []",
         "tests/test_tools.py::test_check_passes_a_proven_change_and_names_what_is_missing"),
     "a verdict tied to no patch counts": (
         "skills/ticket/scripts/check", "            elif loose:", "            elif False:",

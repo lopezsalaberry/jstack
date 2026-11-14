@@ -36,6 +36,16 @@ MUTATIONS = {
     "the shipped probe hands off again after a hand-off": (
         "skills/quota-gate/scripts/quota-probe", 'if os.environ.get("JSTACK_QUOTA_HANDOFF"):', "if False:",
         "tests/test_tools.py::test_the_shipped_probe_hands_the_call_to_the_configured_one"),
+    "proof on a stand-in passes for the surface": (
+        "skills/evidence/scripts/proof-valid", 'if result == "PASS" and level == "5" and cells[column].strip("*` ").lower() == surface.lower():',
+        'if result == "PASS":',
+        "tests/test_tools.py::test_a_ticket_that_names_a_surface_is_not_proven_until_it_is_proven_there"),
+    "the required surface is never checked": (
+        "skills/evidence/scripts/proof-valid", '    if surface.lower() in ("", "none", "-"):', "    if True:",
+        "tests/test_tools.py::test_a_ticket_that_names_a_surface_is_not_proven_until_it_is_proven_there"),
+    "checklist-init drops the surface the ticket names": (
+        "skills/evidence/scripts/checklist-init", 'surface=args.surface.strip() or "none"))', 'surface="none"))',
+        "tests/test_tools.py::test_a_ticket_that_names_a_surface_is_not_proven_until_it_is_proven_there"),
     "a changed patch is still called valid": (
         "skills/evidence/scripts/proof-valid", "if recorded == now:", "if True:",
         "tests/test_tools.py::test_proof_follows_the_patch_not_the_commit"),

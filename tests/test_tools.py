@@ -921,3 +921,64 @@ def test_a_proof_is_not_called_landed_when_head_moved_on_to_another_patch(tmp_pa
     git(r, "commit", "-q", "-m", "unproven")
     later = run([PROOFVALID, "--checklist", checklist, "--base", "main"], cwd=r)
     assert later.returncode == 1 and "landed" not in later.stdout, (later.stdout, later.stderr)
+
+
+# --- the surface a ticket must be proven on (0.10.3) --------------------------
+
+def _surface_ticket(tmp_path, *init_args):
+    r = repo(tmp_path)
+    git(r, "checkout", "-q", "-b", "feat")
+    (r / "x.py").write_text("x = 1\n")
+    commit_all(r)
+    assert run([CHECKLIST, "T-1", "--base", "main", *init_args], cwd=r).returncode == 0
+    return r, r / ".artifacts/T-1/checklist.md"
+
+
+def _set_row(checklist, row):
+    lines = [line for line in checklist.read_text().splitlines() if not line.startswith("| ") or line.startswith("| Target")]
+    at = next(i for i, line in enumerate(lines) if line.startswith("|---"))
+    checklist.write_text("\n".join(lines[:at + 1] + [row] + lines[at + 1:]) + "\n")
+
+
+def test_a_ticket_that_names_a_surface_is_not_proven_until_it_is_proven_there(tmp_path):
+    """2026-11-14, a real pair of runs: the ticket said "on iPhone at 402 pt", both workers proved it in Chromium at
+    that width, wrote "not verified on a real iPhone" and passed their gates, so the check went to the operator. Run
+    in iOS Safari, the fix opened the native list of a select on top of the error it was meant to show."""
+    r, checklist = _surface_ticket(tmp_path, "--surface", "ios-safari")
+    text = checklist.read_text()
+    assert "Required surface: ios-safari" in text and "| File | Surface |" in text
+    check = lambda *extra: run([PROOFVALID, "--checklist", checklist, "--base", "main", *extra], cwd=r)
+    _set_row(checklist, "| Next shows the field | PASS | 5 | saw it | after.png | chromium at 402 pt |")
+    stand_in = check()
+    assert stand_in.returncode == 1 and "must be proven on ios-safari" in stand_in.stdout and "stand-in" in stand_in.stdout
+    assert "same patch" in stand_in.stdout, "the patch is the proven one; what is missing is where"
+    _set_row(checklist, "| Next shows the field | PASS | 4 | ran the unit test | after.txt | ios-safari |")
+    assert check().returncode == 1, "a level 4 row is a test, not the thing running on that surface"
+    _set_row(checklist, "| Next shows the field | FAIL | 5 | the list opened over the error | after.png | ios-safari |")
+    assert check().returncode == 1
+    _set_row(checklist, "| Next shows the field | **PASS** | 5 | saw it in the simulator | after.png | iOS-Safari |")
+    there = check()
+    assert there.returncode == 0 and "1 target(s) proven on ios-safari" in there.stdout, there.stdout
+    other = check("--surface", "android-chrome")
+    assert other.returncode == 1 and "must be proven on android-chrome" in other.stdout, "whoever validates can name the surface"
+
+
+def test_a_ticket_that_names_no_surface_is_asked_for_none(tmp_path):
+    r, checklist = _surface_ticket(tmp_path)
+    assert "Required surface: none" in checklist.read_text()
+    _set_row(checklist, "| the button is blue | PASS | 4 | ran the page | after.txt | |")
+    done = run([PROOFVALID, "--checklist", checklist, "--base", "main"], cwd=r)
+    assert done.returncode == 0 and "surface" not in done.stdout, done.stdout
+    old = "\n".join(line for line in checklist.read_text().splitlines() if not line.startswith("Required surface:"))
+    checklist.write_text(old.replace(" | Surface |", " |").replace("|---|---|---|---|---|---|", "|---|---|---|---|---|")
+                         .replace(" | after.txt | |", " | after.txt |") + "\n")
+    assert "Surface" not in checklist.read_text()
+    assert run([PROOFVALID, "--checklist", checklist, "--base", "main"], cwd=r).returncode == 0, "a checklist from before 0.10.3"
+    asked = run([PROOFVALID, "--checklist", checklist, "--base", "main", "--surface", "ios-safari"], cwd=r)
+    assert asked.returncode == 1 and "must be proven on ios-safari" in asked.stdout, "no Surface column proves nothing there"
+
+
+def test_surface_without_a_checklist_is_a_usage_error(tmp_path):
+    r, checklist = _surface_ticket(tmp_path)
+    bad = run([PROOFVALID, "--print", "--base", "main", "--surface", "ios-safari"], cwd=r)
+    assert bad.returncode == 2 and "needs --checklist" in bad.stderr

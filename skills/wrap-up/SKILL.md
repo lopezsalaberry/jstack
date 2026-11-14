@@ -24,7 +24,9 @@ log; the recap in step 4 is what the operator reads.
    - Scope: `git diff` against `git merge-base HEAD origin/<integration branch>` stays inside the ticket's
      `Touches:`. `RUNSTATE.md` and `.artifacts/` are exempt; list every other file outside it and decide.
    - Proof: `evidence/scripts/proof-valid --base origin/<integration branch>` against the checklist or patch id in
-     the PR description. A checklist with an empty `Patch-id:`, or none, is "proof without anchor": rely on your own
+     the PR description. When the ticket names where it must work, run it with `--checklist <file> --surface <name>`:
+     a candidate proven only somewhere else goes back, or you prove it there yourself. It is not passed on to the
+     operator to try. A checklist with an empty `Patch-id:`, or none, is "proof without anchor": rely on your own
      rerun. Rerun the gate the ticket's `Done when:` names, focused.
    - Screens: for a change to `ui_paths` files, run `evidence/scripts/pr-evidence-check --pr <number>`. A PR that
      shows no screenshot goes back; do not take the images from `.artifacts/` on the worker's word.

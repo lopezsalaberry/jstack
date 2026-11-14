@@ -2,6 +2,22 @@
 
 Format follows Keep a Changelog. Versions are tagged `vX.Y.Z`; install a tag, not `main`.
 
+## 0.10.3
+
+A ticket is proven where it has to work. In a real pair of runs the ticket said "on iPhone at 402 pt"; both workers
+proved it in Chromium at that width, wrote "not verified on a real iPhone", passed their gates, and the check went to
+the operator. Run in iOS Safari on the simulator, the fix opened the native list of a `<select>` on top of the error
+it was meant to show. No desktop engine showed it.
+
+### Added
+- `checklist-init TICKET --surface NAME` records `Required surface: NAME` and the table has a `Surface` column.
+- `proof-valid --checklist FILE` exits 1 when the checklist names a surface and no row is PASS at level 5 with that
+  surface; `--surface NAME` lets whoever validates name it. A checklist with `none`, or from before this release,
+  is asked for nothing.
+- `evidence`: "Prove it where it has to work". A proof elsewhere is a stand-in; a surface that cannot be reached is
+  `BLOCKED(env)`, never a note that leaves the check to the operator. `fanout` puts the surface in the brief, the
+  `cross-review` verify brief names it, and `wrap-up` and `full-send` check it before a merge.
+
 ## 0.10.2
 
 Defects an independent reviewer of another model family proved by running this version, and one that six real tickets

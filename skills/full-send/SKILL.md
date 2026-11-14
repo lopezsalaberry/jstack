@@ -115,6 +115,8 @@ Full confidence means all of these are true on the latest commit:
 
 - Your proof covers every change in the diff, and `evidence/scripts/proof-valid` confirms it
   still describes the patch that will land (a rebase changes the commit, not the patch).
+  When the ticket names where it must work, the checklist has a level 5 row on that surface
+  (`proof-valid --checklist` checks both); a proof somewhere else is a stand-in.
 - A UI change has a clean design check and a screenshot its PR shows: `evidence/scripts/pr-evidence-check
   --pr <number>` exits 0. A path under `.artifacts/` is not a screenshot.
 - A user-visible change also has a verify-mode verdict of `PASS` or `PASS+NOTES` that covers

@@ -51,6 +51,9 @@ integration branch, the per-ticket gate (tests, lint, build, required CI), and t
   `full-send`. When you would ask, stop and report `BLOCKED` with evidence.**
 - If the repo has no `verify-<app>` skill or no GitHub remote, report `BLOCKED`
   before editing.
+- **When the ticket names where it must work** (a device, a browser, the packaged app), the brief names
+  that surface and says: start with `checklist-init <ticket> --surface <name>` and prove it there
+  (`evidence`, "Prove it where it has to work"). Proof elsewhere is a stand-in.
 - **A UI ticket carries a Design block.** When the ticket's `Touches` match `ui_paths` (see
   `jstack`), the brief names the design sources (the `design_tokens` file and wherever the
   project keeps components and screens), says to read them before editing and to use only the

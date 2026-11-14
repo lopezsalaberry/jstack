@@ -234,3 +234,18 @@ def test_the_template_marker_moves_when_the_template_does():
     assert len(section) == 2, f"CHANGELOG.md has no section for the template marker {version}"
     assert "templates/AGENTS.md" in section[1].split("\n## ", 1)[0], f"the {version} section does not mention templates/AGENTS.md"
     assert tuple(map(int, version.split("."))) <= tuple(map(int, (ROOT / "VERSION").read_text().split("."))), "the marker is ahead of VERSION"
+
+
+def test_a_ticket_is_proven_where_it_has_to_work():
+    """0.10.3: what a run can settle is not handed to the operator; a proof on another surface is a stand-in."""
+    read = lambda rel: " ".join((ROOT / rel).read_text().split())
+    evidence = read("skills/evidence/SKILL.md")
+    for needle in ("**Prove it where it has to work.**", "`scripts/checklist-init <ticket> --surface <name>`", "give it a row at level 5",
+                   "Proof elsewhere is a stand-in: it does not pass", "`BLOCKED(env)` with what you tried, never a quiet switch to another surface",
+                   "never a note that leaves the check to the operator"):
+        assert needle in evidence, needle
+    assert "on this surface: <the one the ticket names, or the repo's main one>" in read("skills/cross-review/SKILL.md")
+    assert "start with `checklist-init <ticket> --surface <name>` and prove it there" in read("skills/fanout/SKILL.md")
+    assert "`--checklist <file> --surface <name>`" in read("skills/wrap-up/SKILL.md") and "It is not passed on to the operator to try." in read("skills/wrap-up/SKILL.md")
+    assert "the checklist has a level 5 row on that surface" in read("skills/full-send/SKILL.md")
+

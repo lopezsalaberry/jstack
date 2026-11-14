@@ -133,7 +133,8 @@ Brief:
 Do not edit the repo, commit, push, comment, or start subagents.
 Repo: <path> Base: <sha> Head: <sha> Intent: <intent> Acceptance criteria: <list>
 Run this change the way a user would, on the delivered artifact (use the project's verify-<app>
-skill if it exists), parent against head. For each criterion give the steps or command and what
+skill if it exists), parent against head, on this surface: <the one the ticket names, or the repo's
+main one>. For each criterion give the steps or command and what
 you saw. If the change touches the UI, also run the design lane: compare the screens against the
 design source and list every mismatch.
 Reply: VERDICT: PASS, PASS+NOTES or FAIL, then one line per criterion. Anything you could not

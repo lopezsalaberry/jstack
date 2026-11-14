@@ -2,7 +2,7 @@
 """proof-valid: does a recorded proof still describe the patch that will land?
 
   proof-valid --print [--base REF]
-  proof-valid --checklist FILE [--base REF]
+  proof-valid --checklist FILE [--surface NAME] [--base REF]
   proof-valid --patch-id ID [--base REF]
   proof-valid --stamp FILE [--base REF]
 
@@ -18,12 +18,18 @@ with the one recorded when the proof was made.
                `checklist-init` runs before the change exists, so it can only record an empty patch; a
                checklist that still records one is refused by --checklist (exit 2), never called valid.
 
+Where it was proven. A checklist that carries `Required surface: NAME` (written by `checklist-init --surface`), or a
+--surface NAME from whoever validates, must also hold a row that is PASS at level 5 with NAME in its Surface
+column. A proof on another surface is a stand-in and does not pass: a fix proven in a desktop browser for a ticket
+that names a phone is not proven. `none`, `-` or no line at all asks for nothing.
+
 BASE defaults to the remote's default branch (origin/HEAD), then origin/main, main, master.
 A proof whose revision is already part of BASE has landed: the change is no longer a patch over BASE,
 so there is nothing left to compare and the proof stands. (A squash merge rewrites the commit, so a
 squashed change is not recognised this way; compare before merging.)
-Exit 0 same patch or already landed, 1 the patch changed (print both ids), 2 usage error, no way to compute, or a
-checklist that records no patch.
+Exit 0 same patch or already landed (and proven on the required surface, when one is named), 1 the patch changed
+(print both ids) or the required surface has no PASS at level 5, 2 usage error, no way to compute, or a checklist
+that records no patch.
 """
 from __future__ import annotations
 
@@ -65,6 +71,39 @@ def patch_id(base: str, ref: str = "HEAD") -> str:
 UNANCHORED = ("empty", "?")
 
 
+def proven_on(text: str, surface: str) -> list[str]:
+    """Targets of the evidence table that are PASS at level 5 with `surface` in the Surface column."""
+    column, found = None, []
+    for line in text.splitlines():
+        if not line.lstrip().startswith("|"):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if cells[0] == "Target":
+            column = cells.index("Surface") if "Surface" in cells else None
+            continue
+        if column is None or len(cells) <= column or set(cells[0]) <= {"-", " ", ":"} or cells[0].startswith("<"):
+            continue
+        result, level = re.sub(r"[*`\s]", "", cells[1]).upper(), cells[2].strip("*` ")
+        if result == "PASS" and level == "5" and cells[column].strip("*` ").lower() == surface.lower():
+            found.append(cells[0])
+    return found
+
+
+def check_surface(path: Path, text: str, override: str | None) -> None:
+    named = re.search(r"(?m)^Required surface:[ \t]*(.*)$", text)
+    surface = (override or (named.group(1) if named else "")).strip()
+    if surface.lower() in ("", "none", "-"):
+        return
+    there = proven_on(text, surface)
+    if there:
+        print(f"proof-valid: {len(there)} target(s) proven on {surface}")
+        return
+    print(f"proof-valid: this ticket must be proven on {surface} and {path} has no row that is PASS at level 5 with that "
+          "Surface. A proof somewhere else is a stand-in: reach the surface as the repo's verify skill says, or report "
+          "BLOCKED(env) naming what failed")
+    sys.exit(1)
+
+
 def stamp(path: Path, revision: str, patch: str) -> None:
     if patch in UNANCHORED:
         print("proof-valid: nothing to stamp, HEAD adds no change over the base", file=sys.stderr)
@@ -92,7 +131,10 @@ def main() -> None:
     group.add_argument("--checklist", type=Path)
     group.add_argument("--patch-id", dest="recorded")
     group.add_argument("--stamp", type=Path)
+    ap.add_argument("--surface")
     args = ap.parse_args()
+    if args.surface and not args.checklist:
+        ap.error("--surface reads the evidence table, so it needs --checklist")
     base = args.base or default_base()
     now = patch_id(base)
     if args.show:
@@ -121,11 +163,14 @@ def main() -> None:
         if revision and now in UNANCHORED and subprocess.run(
                 ["git", "merge-base", "--is-ancestor", revision.group(1), base], capture_output=True).returncode == 0:
             print(f"proof-valid: landed; the proof's revision {revision.group(1)[:7]} is already in {base}")
+            check_surface(args.checklist, text, args.surface)
             return
     else:
         recorded = args.recorded
     if recorded == now:
         print(f"proof-valid: same patch ({now})")
+        if args.checklist:
+            check_surface(args.checklist, text, args.surface)
         return
     print(f"proof-valid: the patch changed since the proof (recorded {recorded}, now {now}); prove again")
     sys.exit(1)

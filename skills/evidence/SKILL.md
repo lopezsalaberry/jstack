@@ -42,6 +42,14 @@ later reader whether the proof still describes the patch.
 A target you could not exercise is `FAIL`, not skipped. Never weaken a target
 to make it pass.
 
+**Prove it where it has to work.** When the ticket names a device, a browser or the packaged app,
+that is the surface: start with `scripts/checklist-init <ticket> --surface <name>`, reach it as the
+repo's `verify-<app>` skill says, and give it a row at level 5 with that name in the Surface
+column. Proof elsewhere is a stand-in: it does not pass, and `proof-valid --checklist` says so. A
+desktop browser at a phone's width is not the phone. If you cannot reach the surface, report
+`BLOCKED(env)` with what you tried, never a quiet switch to another surface, and never a note that
+leaves the check to the operator.
+
 ## 4. Report
 
 Paste the checklist summary into the PR description. A path under

@@ -13,6 +13,7 @@ high-risk changes:
 - auth, permissions, credentials
 - concurrency or security
 - production deploys of critical services
+- a shared component or module that many screens or callers go through
 
 Everything else uses self-validation (`prove-it`, `verify-<app>`, tests, lint, build).
 

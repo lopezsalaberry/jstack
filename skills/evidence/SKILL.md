@@ -49,9 +49,10 @@ Paste the checklist summary into the PR description. A path under
 in git, and a PR that says "screenshots are under .artifacts/" shows nothing.
 
 When anything on a screen changed, run `scripts/publish <ticket> --pr <number>`.
-It copies the images and videos to the `jstack-evidence` branch of `origin` (a
-branch no change is merged from, so the change stays small) and puts them in the
-PR description as pictures, replacing the block of an earlier run. Run it again
+It copies the images and videos to `refs/jstack-evidence/<ticket>` on `origin` (a ref
+of its own, which a normal clone or fetch does not download) and puts them in the
+PR description as pictures, replacing the block of an earlier run. Name the few files
+that carry the proof (`publish <ticket> <file> ...`); it refuses a whole folder. Run it again
 after the proof changes. It works only for a GitHub origin; for any other, it
 says so and lists the files: show them in your message instead. Do not publish
 evidence anywhere else.

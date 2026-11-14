@@ -2,6 +2,29 @@
 
 Format follows Keep a Changelog. Versions are tagged `vX.Y.Z`; install a tag, not `main`.
 
+## 0.10.2
+
+Defects an independent reviewer of another model family proved by running this version, and one that six real tickets
+showed. Each fix has the reviewer's reproduction as a test.
+
+### Fixed
+- `publish` pushed the pictures to a branch (`jstack-evidence`), which every clone and every worker's fetch downloaded, and
+  took the whole `.artifacts/<ticket>/` folder (real ones average 10 MB a ticket). It now pushes to
+  `refs/jstack-evidence/<ticket>`, a ref a normal clone does not download, takes the files you name
+  (`publish TICKET FILE...`), refuses a folder of more than 8 files, and skips files over 2 MB. `--branch` is gone.
+  `--dry-run` no longer needs an `origin`.
+- `pr-evidence-check` counted any link written as an image (`![shot](https://example.com/not-a-picture)`). It now wants a
+  link to an image or video file, or a GitHub attachment.
+- `proof-valid` answered "landed" for a proof whose commit had reached the base while HEAD had moved on to a later,
+  unproven patch; and it called a checklist that records no patch valid when HEAD had no change.
+- `quota-probe` exited 2 ("unknown, go ahead") on a source line it could not read; it exits 64. `--until` refused a reset
+  48 days away (the limit was 45 days); the limit is 92 days, which still catches a mistyped year.
+- `token-lint` did not look at arbitrary utility sizes such as `p-[13px]`.
+
+### Changed
+- `cross-review`'s high-risk list names a shared component or module that many screens or callers go through. In a real
+  ticket a fix to the component all 73 menus of an app use was reviewed in verify mode only, because the list did not name it.
+
 ## 0.10.1
 
 The reader of a pull request can see the screenshots. Measured over two weeks of four real repos: of 214 pull requests that

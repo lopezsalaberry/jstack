@@ -5,8 +5,8 @@
 
 Applies only when a file this change touches (against BASE, default `origin/<integration_branch>`) matches the `ui_paths`
 setting; with `ui_paths` empty the design gate is off and so is this. The PR description and, with --pr, its comments must
-hold a picture or a video a reviewer can open: a markdown image, an <img>, a GitHub attachment, or a link to an image or video
-file over http(s). A path under `.artifacts/` is not one (that folder is not in git), and neither is a status badge or an avatar.
+hold a picture or a video a reviewer can open: a link to an image or video file over http(s) (as a markdown image, an <img>
+or a plain link) or a GitHub attachment. A link that does not name such a file does not count. A path under `.artifacts/` is not one (that folder is not in git), and neither is a status badge or an avatar.
 `scripts/publish` makes the block that passes this check.
 
 This checks that a screenshot is shown, not that it shows every changed screen or that the screen is right: the design check and
@@ -27,13 +27,12 @@ _loader = SourceFileLoader("jstack_settings", str(HERE.parents[1] / "jstack" / "
 settings = importlib.util.module_from_spec(importlib.util.spec_from_loader("jstack_settings", _loader))
 _loader.exec_module(settings)
 
-MEDIA = r"(?:png|jpe?g|gif|webp|svg|mp4|mov|webm)"
+FILE = r"https?://[^)\s>\"']+\.(?:png|jpe?g|gif|webp|mp4|mov|webm)(?:\?[^)\s>\"']*)?"   # a link to a picture or video file
 PICTURE = [
-    re.compile(r"!\[[^\]]*\]\(\s*<?https?://[^)\s>]+"),                       # ![alt](https://...)
-    re.compile(r"<img\b[^>]*\bsrc=[\"']https?://[^\"']+", re.I),             # <img src="https://...">
-    re.compile(r"https://github\.com/user-attachments/\S+"),                  # a file dropped into the PR box
+    re.compile(rf"\]\(\s*<?{FILE}", re.I),                                   # ![alt](https://.../x.png), [clip](https://.../x.mp4)
+    re.compile(rf"<img\b[^>]*\bsrc=[\"']{FILE}", re.I),                      # <img src="https://.../x.png">
+    re.compile(r"https://github\.com/user-attachments/assets/[\w-]+"),       # a file dropped into the PR box
     re.compile(r"https://private-user-images\.githubusercontent\.com/\S+"),
-    re.compile(rf"\]\(\s*<?https?://[^)\s>]+\.{MEDIA}(?:\?[^)\s>]*)?\)", re.I),   # [video](https://.../x.mp4)
 ]
 NOT_EVIDENCE = re.compile(r"vercel\.com/static|vercel\.com/api/www/avatar|vercel\.sh|shields\.io|/badge(?:\.svg|/)|"
                           r"avatars\.githubusercontent\.com|codecov\.io|badgen\.net", re.I)

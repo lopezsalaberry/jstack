@@ -113,12 +113,12 @@ def main() -> None:
             print(f"proof-valid: no `Patch-id:` line in {args.checklist}; the proof cannot be tied to a patch", file=sys.stderr)
             sys.exit(2)
         recorded = match.group(1)
-        if recorded in UNANCHORED and now != recorded:
+        if recorded in UNANCHORED:
             print(f"proof-valid: {args.checklist} records no patch ({recorded}): it was started before the change existed. "
                   f"Run `proof-valid --stamp {args.checklist}` once the proof is final", file=sys.stderr)
             sys.exit(2)
         revision = re.search(r"^Revision:\s*([0-9a-f]{7,40})", text, re.M)
-        if revision and recorded != now and subprocess.run(
+        if revision and now in UNANCHORED and subprocess.run(
                 ["git", "merge-base", "--is-ancestor", revision.group(1), base], capture_output=True).returncode == 0:
             print(f"proof-valid: landed; the proof's revision {revision.group(1)[:7]} is already in {base}")
             return

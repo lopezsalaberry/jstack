@@ -114,7 +114,9 @@ def test_quota_probe_rejects_a_malformed_line(tmp_path):
     src = tmp_path / "q.txt"
     src.write_text("alpha only-two-fields\n")
     bad = run([PROBE, "--source", src, "--provider", "alpha"], cwd=tmp_path)
-    assert bad.returncode == 2 and "expected" in bad.stderr
+    assert bad.returncode == 64 and "expected" in bad.stderr, "exit 2 would mean 'unknown, go ahead'"
+    src.write_text("not-a-row\nalpha acct1 0\n")
+    assert run([PROBE, "--source", src, "--provider", "alpha"], cwd=tmp_path).returncode == 64, "the 0% line below a bad one is never reached"
 
 
 def test_a_refusal_marks_the_provider_and_every_later_worker_skips_it(tmp_path):
@@ -151,7 +153,7 @@ def test_until_marks_a_provider_for_as_long_as_its_refusal_lasts(tmp_path):
     expires = float((tmp_path / "marks.txt").read_text().split()[1])
     assert 19 * 86400 < expires - time.time() < 21 * 86400, "about 20 days, not the hour --minutes would give"
     assert run([PROBE, "--provider", "cursor"], cwd=tmp_path, env=marks).returncode == 1
-    far = time.strftime("%Y-%m-%d", time.localtime(time.time() + 90 * 86400))
+    far = time.strftime("%Y-%m-%d", time.localtime(time.time() + 400 * 86400))            # a mistyped year
     for text, why in (("2020-01-01", "already past"), (far, "days away"), ("tomorrow-ish", "not an ISO")):
         bad = run([PROBE, "--mark-exhausted", "x", "--until", text], cwd=tmp_path, env=marks)
         assert bad.returncode == 64 and why in bad.stderr, (text, bad.stderr)   # 64, never the 2 that means "unknown"
@@ -160,6 +162,8 @@ def test_until_marks_a_provider_for_as_long_as_its_refusal_lasts(tmp_path):
     epoch = run([PROBE, "--mark-exhausted", "y", "--until", str(int(time.time()) + 7200)], cwd=tmp_path, env=marks)
     assert epoch.returncode == 0, "epoch seconds are accepted too"
     assert run([PROBE, "--mark-exhausted", "z"], cwd=tmp_path, env=marks).stdout.strip().endswith("for 60 min")
+    next_reset = time.strftime("%Y-%m-%d", time.localtime(time.time() + 48 * 86400))      # a reset on the 1st, 48 days out, was refused
+    assert run([PROBE, "--mark-exhausted", "w", "--until", next_reset], cwd=tmp_path, env=marks).returncode == 0
 
 
 def test_reviewer_models_defaults_to_auto_and_the_preference_syntax_parses(tmp_path):
@@ -762,9 +766,12 @@ def _fake_gh(tmp_path, body):
     return {"PATH": f"{bin_dir}:{os.environ['PATH']}"}
 
 
-def test_publish_shows_the_screenshots_from_a_branch_that_is_not_the_change(tmp_path):
-    """2026-11: 103 of 214 UI pull requests said the screenshots were under .artifacts/ (not in git); 3 showed one."""
+def test_publish_shows_the_screenshots_from_a_ref_that_no_clone_downloads(tmp_path):
+    """2026-11: 103 of 214 UI pull requests said the screenshots were under .artifacts/ (not in git); 3 showed one. An
+    independent review then showed that a branch of pictures is fetched by every clone, and real evidence folders
+    average 10 MB a ticket: so the pictures go to a ref of their own, and a whole folder is refused."""
     r, bare = _with_origin(tmp_path)
+    git(r, "push", "-q", "origin", "main")
     shots = r / ".artifacts" / "T-1"
     shots.mkdir(parents=True)
     (shots / "01-start.png").write_bytes(b"png1")
@@ -772,28 +779,40 @@ def test_publish_shows_the_screenshots_from_a_branch_that_is_not_the_change(tmp_
     (shots / "clip.mov").write_bytes(b"mov")
     (shots / "notes.txt").write_text("not an image")
     (shots / "huge.png").write_bytes(b"x" * 3000)
-    head = subprocess.run(["git", "-C", str(r), "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
+    out = lambda *cmd: subprocess.run(list(map(str, cmd)), capture_output=True, text=True).stdout.strip()
+    head = out("git", "-C", r, "rev-parse", "--short", "HEAD")
     done = run([PUBLISH, "T-1", "--repo", r, "--web-base", "https://example.test/o/r", "--max-mb", "0.001"], cwd=tmp_path)
     assert done.returncode == 0, (done.stdout, done.stderr)
-    commit = subprocess.run(["git", "-C", str(bare), "rev-parse", "jstack-evidence"], capture_output=True, text=True).stdout.strip()
+    commit = out("git", "-C", bare, "rev-parse", "refs/jstack-evidence/T-1")
     assert f"![01-start](https://example.test/o/r/blob/{commit}/T-1/{head}/01-start.png?raw=true)" in done.stdout
     assert f"[clip (video)](https://example.test/o/r/blob/{commit}/T-1/{head}/clip.mov?raw=true)" in done.stdout
     assert "notes.txt" not in done.stdout and "huge.png" not in done.stdout and "skipped huge.png" in done.stderr
-    tree = subprocess.run(["git", "-C", str(bare), "ls-tree", "-r", "--name-only", "jstack-evidence"], capture_output=True, text=True).stdout
-    assert f"T-1/{head}/02-end.png" in tree.splitlines()
-    branches = subprocess.run(["git", "-C", str(r), "branch", "--list"], capture_output=True, text=True).stdout
-    assert "jstack-evidence" not in branches and subprocess.run(["git", "-C", str(r), "diff", "--cached", "--quiet"]).returncode == 0, \
-        "the repo's own branches and index are not touched"
-    again = run([PUBLISH, "T-1", "--repo", r, "--web-base", "https://example.test/o/r", "--max-mb", "0.001"], cwd=tmp_path)
-    assert subprocess.run(["git", "-C", str(bare), "rev-parse", "jstack-evidence"], capture_output=True, text=True).stdout.strip() == commit, \
-        "the same files published twice make no second commit"
-    other = r / ".artifacts" / "T-2"
-    other.mkdir()
-    (other / "a.png").write_bytes(b"other")
-    assert run([PUBLISH, "T-2", "--repo", r, "--web-base", "https://example.test/o/r"], cwd=tmp_path).returncode == 0
-    tree = subprocess.run(["git", "-C", str(bare), "ls-tree", "-r", "--name-only", "jstack-evidence"], capture_output=True, text=True).stdout
-    assert f"T-1/{head}/01-start.png" in tree and f"T-2/{head}/a.png" in tree, "a later ticket keeps the earlier ones"
-    assert again.returncode == 0
+    assert out("git", "-C", bare, "for-each-ref", "--format=%(refname)").splitlines() == ["refs/heads/main", "refs/jstack-evidence/T-1"], \
+        "the pictures are not on a branch"
+    clone = tmp_path / "clone"
+    subprocess.run(["git", "clone", "-q", f"file://{bare}", str(clone)], check=True, capture_output=True)   # file:// uses the real transport
+    assert subprocess.run(["git", "-C", str(clone), "cat-file", "-e", commit], capture_output=True).returncode != 0, \
+        "a normal clone does not download the pictures"
+    assert "jstack-evidence" not in out("git", "-C", r, "for-each-ref") and subprocess.run(["git", "-C", str(r), "diff", "--cached", "--quiet"]).returncode == 0, \
+        "the repo's own refs and index are not touched"
+    assert run([PUBLISH, "T-1", "--repo", r, "--web-base", "https://example.test/o/r", "--max-mb", "0.001"], cwd=tmp_path).returncode == 0
+    assert out("git", "-C", bare, "rev-parse", "refs/jstack-evidence/T-1") == commit, "the same files published twice make no second commit"
+    (r / "more.txt").write_text("a later commit\n")
+    git(r, "add", "-A")
+    git(r, "commit", "-q", "-m", "more")
+    (shots / "02-end.png").write_bytes(b"newer")
+    assert run([PUBLISH, "T-1", "--repo", r, "--web-base", "https://example.test/o/r", "--max-mb", "0.001"], cwd=tmp_path).returncode == 0
+    assert out("git", "-C", bare, "rev-parse", "refs/jstack-evidence/T-1^") == commit, "a later run adds to the ref"
+    tree = out("git", "-C", bare, "ls-tree", "-r", "--name-only", "refs/jstack-evidence/T-1")
+    assert f"T-1/{head}/01-start.png" in tree and f"T-1/{out('git', '-C', r, 'rev-parse', '--short', 'HEAD')}/02-end.png" in tree, \
+        "so the links of an earlier run keep working"
+    only = run([PUBLISH, "T-1", "02-end.png", "--repo", r, "--web-base", "https://example.test/o/r", "--dry-run"], cwd=tmp_path)
+    assert only.returncode == 0 and "02-end" in only.stdout and "01-start" not in only.stdout, "named files are the ones published"
+    assert run([PUBLISH, "T-1", "nope.png", "--repo", r, "--web-base", "https://example.test/o/r"], cwd=tmp_path).returncode == 2
+    for i in range(9):
+        (shots / f"extra-{i}.png").write_bytes(b"x")
+    many = run([PUBLISH, "T-1", "--repo", r, "--web-base", "https://example.test/o/r"], cwd=tmp_path)
+    assert many.returncode == 2 and "limit 8" in many.stderr and "Name the few" in many.stderr, "the folder is not what gets published"
 
 
 def test_publish_does_not_pretend_when_the_origin_cannot_serve_images_or_there_is_nothing(tmp_path):
@@ -805,7 +824,7 @@ def test_publish_does_not_pretend_when_the_origin_cannot_serve_images_or_there_i
     (shots / "a.png").write_bytes(b"x")
     local = run([PUBLISH, "T-9", "--repo", r], cwd=tmp_path)           # a bare repo on disk is not a web address
     assert local.returncode == 2 and "stay local" in local.stderr and "a.png" in local.stderr, (local.stdout, local.stderr)
-    assert subprocess.run(["git", "-C", str(bare), "branch", "--list"], capture_output=True, text=True).stdout.strip() == "", \
+    assert "jstack-evidence" not in subprocess.run(["git", "-C", str(bare), "for-each-ref"], capture_output=True, text=True).stdout, \
         "nothing was pushed"
 
 
@@ -839,8 +858,10 @@ def test_a_ui_change_needs_a_screenshot_the_reviewer_can_open(tmp_path):
     body = tmp_path / "body.md"
     check = lambda text: (body.write_text(text), run([EVIDENCE_CHECK, "--repo", r, "--base", "main", "--body-file", body], cwd=tmp_path))[1]
     for nothing in ("Fixes the pill.", "Screenshots are under `.artifacts/LOUD-432` (not in git).",
+                    "![shot](https://example.com/not-a-picture)",          # found by an independent review: this passed
                     "![](.artifacts/T/01.png)", "| [smally](https://vercel.com/x) | ![Ready](https://vercel.com/static/status/ready.svg) |",
-                    "![build](https://img.shields.io/badge/build-passing-green)"):
+                    "![build](https://img.shields.io/badge/build-passing-green)",
+                    "![build](https://img.shields.io/badge/build-passing-green.png)"):
         bad = check(nothing)
         assert bad.returncode == 1 and "shows no screenshot" in bad.stderr, (nothing, bad.stdout, bad.stderr)
     for shown in ("![a](https://example.test/o/r/blob/abc/T/1.png?raw=true)",
@@ -869,3 +890,34 @@ def test_the_screenshot_check_reads_the_pull_request_and_its_comments(tmp_path):
     assert done.returncode == 0 and "ok," in done.stdout, (done.stdout, done.stderr)
     env = _fake_gh(tmp_path, "no pictures here")
     assert run([EVIDENCE_CHECK, "--repo", r, "--base", "main", "--pr", "7"], cwd=tmp_path, env=env).returncode == 1
+
+
+def test_token_lint_reads_arbitrary_utility_values(tmp_path):
+    """Found by an independent review: `p-[13px]` in a component passed, and the projects that matter write sizes that way."""
+    r = ui_repo(tmp_path)
+    (r / "app").mkdir(exist_ok=True)
+    (r / "app/Button.tsx").write_text('export const B = () => <button className="p-[13px] md:text-[15px] m-[16px] border-[1px]" />\n')
+    done = lint(r, "--tokens", "design/tokens.json", "--paths", "app/**/*.tsx")
+    assert done.returncode == 1 and "`p-[13px]`" in done.stdout and "`md:text-[15px]`" in done.stdout, (done.stdout, done.stderr)
+    assert "m-[16px]" not in done.stdout and "border-[1px]" not in done.stdout, "a token value and a hairline are fine"
+
+
+def test_a_proof_is_not_called_landed_when_head_moved_on_to_another_patch(tmp_path):
+    """Found by an independent review: after the proven commit reached the base, a new unproven commit on top was still
+    answered with "landed" and exit 0."""
+    r = repo(tmp_path)
+    git(r, "checkout", "-q", "-b", "feat")
+    (r / "a.txt").write_text("one\n")
+    git(r, "add", "-A")
+    git(r, "commit", "-q", "-m", "proven")
+    assert run([CHECKLIST, "T-1", "--base", "main"], cwd=r).returncode == 0
+    checklist = r / ".artifacts/T-1/checklist.md"
+    git(r, "checkout", "-q", "main")
+    git(r, "merge", "-q", "--ff-only", "feat")
+    git(r, "checkout", "-q", "feat")
+    assert run([PROOFVALID, "--checklist", checklist, "--base", "main"], cwd=r).returncode == 0, "landed, nothing new on top"
+    (r / "b.txt").write_text("two\n")
+    git(r, "add", "-A")
+    git(r, "commit", "-q", "-m", "unproven")
+    later = run([PROOFVALID, "--checklist", checklist, "--base", "main"], cwd=r)
+    assert later.returncode == 1 and "landed" not in later.stdout, (later.stdout, later.stderr)

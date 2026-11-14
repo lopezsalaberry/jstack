@@ -21,7 +21,7 @@ Marks: when starting a model fails for quota, rate limit, authentication or unav
 source says, so no other worker retries a provider that just refused. When the refusal names when the
 provider answers again (a monthly cap, "try again at 13:50"), pass that moment as --until WHEN, an ISO
 date or date-time in local time (2026-12-01, 2026-11-16T13:50) or epoch seconds, so the mark lasts as long
-as the refusal does; a past time or one more than 45 days away is a usage error. --clear NAME removes the
+as the refusal does; a past time or one more than 92 days away (a mistyped year) is a usage error. --clear NAME removes the
 mark. Marks live in $JSTACK_QUOTA_MARKS or ~/.config/jstack/quota-marks.txt (per machine, not
 per repo: quota belongs to the account), one line `<provider> <expires epoch> <reason>`.
 
@@ -33,7 +33,7 @@ JSTACK_QUOTA_PROBE or the repo's AGENTS.md) names another command, any call with
 instead, so it makes no difference which of the two a caller reaches. A caller that ran this file directly used
 to read "no quota source configured" as "unknown" for a provider the configured probe knew to be at 0%.
 
-A bad argument exits 64. In this contract exit 2 means unknown, and a usage error must never look like it.
+A bad argument or a source line that cannot be read exits 64. In this contract exit 2 means unknown, and a usage error must never look like it.
 """
 from __future__ import annotations
 
@@ -68,11 +68,11 @@ def parse(path: Path) -> list[tuple[str, str, float]]:
             rows.append((parts[0], parts[1], float(parts[2].rstrip("%"))))
         except (IndexError, ValueError):
             print(f"quota-probe: {path}:{number}: expected '<provider> <account> <percent>'", file=sys.stderr)
-            sys.exit(2)
+            sys.exit(64)  # not 2: 2 means "unknown", and a file nobody can read must not look like "go ahead"
     return rows
 
 
-MAX_UNTIL_DAYS = 45
+MAX_UNTIL_DAYS = 92  # past any monthly reset; a mistyped year still fails
 
 
 def parse_until(text: str, now: float) -> float:

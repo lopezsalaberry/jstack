@@ -25,7 +25,7 @@ MUTATIONS = {
         "skills/jstack/scripts/jstack-settings", 'if f"JSTACK_{key.upper()}" in env:', "if False:",
         "tests/test_tools.py::test_settings_precedence_is_env_then_agents_md_then_default"),
     "a checklist that records no patch is accepted": (
-        "skills/evidence/scripts/proof-valid", "if recorded in UNANCHORED and now != recorded:", "if False:",
+        "skills/evidence/scripts/proof-valid", "        if recorded in UNANCHORED:", "        if False:",
         "tests/test_tools.py::test_a_checklist_started_before_the_change_is_never_called_valid"),
     "a stamp keeps the old patch id": (
         "skills/evidence/scripts/proof-valid", '("Patch-id", patch)', '("Patch-id", "empty")',
@@ -80,7 +80,25 @@ MUTATIONS = {
         "tests/test_tools.py::test_until_marks_a_provider_for_as_long_as_its_refusal_lasts"),
     "publishing a second ticket drops the first one's pictures": (
         "skills/evidence/scripts/publish", '            git(root, "read-tree", parent, env=env)', "            pass",
-        "tests/test_tools.py::test_publish_shows_the_screenshots_from_a_branch_that_is_not_the_change"),
+        "tests/test_tools.py::test_publish_shows_the_screenshots_from_a_ref_that_no_clone_downloads"),
+    "the pictures go to a branch every clone fetches": (
+        "skills/evidence/scripts/publish", 'f"refs/jstack-evidence/{args.ticket}", args.ticket, revision', 'f"refs/heads/jstack-evidence-{args.ticket}", args.ticket, revision',
+        "tests/test_tools.py::test_publish_shows_the_screenshots_from_a_ref_that_no_clone_downloads"),
+    "a whole folder is published": (
+        "skills/evidence/scripts/publish", "        if len(files) > args.max_files:", "        if False:",
+        "tests/test_tools.py::test_publish_shows_the_screenshots_from_a_ref_that_no_clone_downloads"),
+    "a link that is not a picture counts as a screenshot": (
+        "skills/evidence/scripts/pr-evidence-check", 're.compile(rf"\\]\\(\\s*<?{FILE}", re.I),', 're.compile(r"\\]\\(\\s*<?https?://\\S+", re.I),',
+        "tests/test_tools.py::test_a_ui_change_needs_a_screenshot_the_reviewer_can_open"),
+    "a later unproven patch is called landed": (
+        "skills/evidence/scripts/proof-valid", "        if revision and now in UNANCHORED and subprocess.run(", "        if revision and recorded != now and subprocess.run(",
+        "tests/test_tools.py::test_a_proof_is_not_called_landed_when_head_moved_on_to_another_patch"),
+    "an unreadable quota file reads as unknown": (
+        "skills/quota-gate/scripts/quota-probe", "            sys.exit(64)  # not 2", "            sys.exit(2)  # not 2",
+        "tests/test_tools.py::test_quota_probe_rejects_a_malformed_line"),
+    "an arbitrary utility size is not looked at": (
+        "skills/full-send/scripts/token-lint", '        for m in UTILITY_LENGTH.finditer(text if lengths else ""):', '        for m in UTILITY_LENGTH.finditer(""):',
+        "tests/test_tools.py::test_token_lint_reads_arbitrary_utility_values"),
     "a status badge counts as a screenshot": (
         "skills/evidence/scripts/pr-evidence-check", "        if NOT_EVIDENCE.search(line):", "        if False:",
         "tests/test_tools.py::test_a_ui_change_needs_a_screenshot_the_reviewer_can_open"),

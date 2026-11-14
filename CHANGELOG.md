@@ -2,6 +2,37 @@
 
 Format follows Keep a Changelog. Versions are tagged `vX.Y.Z`; install a tag, not `main`.
 
+## 0.10.0
+
+The orchestrator chooses the model for each task, and a review always has somewhere to go. Found by reading the last
+week of runs: two independent reviews stopped on 11 and 13 November because their provider had reached a monthly cap and a
+remembered note said "ask before using another one"; the deploy behind the first waited for hours.
+
+### Added
+- `routing` setting: free text the orchestrator reads when it picks a model ("UI and UX work: the strongest model; native
+  builds: provider-b"). A suggestion that the orchestrator may depart from, saying why in the trail. `models` is now a pin:
+  set, it is walked in order as before (with `inherit-parent` as an entry); empty, the orchestrator picks per task from what
+  the harness can start.
+- The operator's own settings file, `~/.config/jstack/settings` (or `$JSTACK_USER_SETTINGS`): plain `key: value` lines that
+  apply to every repo on the machine. Precedence is environment, then the repo's `AGENTS.md`, then this file, then the default.
+- `quota-probe --mark-exhausted NAME --until WHEN` (and the same in the base probe): the mark lasts until the moment the refusal
+  names, an ISO date or date-time or epoch seconds. A past time, one more than 45 days away, or both `--minutes` and `--until`
+  exit 64. The default hour made a monthly cap look available again every hour.
+- `reviewer_models` accepts a bare provider (its strongest model of another family than the author).
+
+### Changed
+- Every delegate names its model and effort (`quota-gate`, "Pick the model"). A child that is not told inherits its parent's, so
+  an orchestrator on the strongest model would run every worker on it. Unwatched work records the choice as a `delegate` row in
+  the trail. Effort starts from the session's level: one step up for the hardest work, one or two down for routine work, and
+  never changed on a verifier or reviewer.
+- `cross-review`: the list is the operator's permission to fall through it, so no remembered preference turns a refusal into a
+  question. The author acts on each finding as it arrives, does not edit the checkout under review, and does not wait for a
+  reviewer the operator called non-blocking.
+- `fanout`: a worker that stopped because its provider refused is relaunched at once on the next candidate; it is parked only
+  when no candidate can start.
+- `wrap-up`: starts from what the wave launched, not from what reported, and sends work back to a fresh worker with the whole
+  brief instead of messaging the old one.
+
 ## 0.9.4
 
 ### Fixed

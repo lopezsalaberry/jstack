@@ -4,7 +4,9 @@
   jstack-settings [--repo PATH] [--json] [KEY]
 
 Precedence: environment JSTACK_<KEY>, then the `## jstack settings` block of the repo's
-AGENTS.md (`key: value` lines), then the default. Without KEY prints every setting.
+AGENTS.md (`key: value` lines), then the operator's own file (`key: value` lines, `#` comments;
+$JSTACK_USER_SETTINGS or ~/.config/jstack/settings, one for every repo on the machine), then the
+default. A repo's value replaces the operator's for that key. Without KEY prints every setting.
 """
 from __future__ import annotations
 
@@ -21,6 +23,7 @@ SKILLS = Path(__file__).resolve().parents[2]
 DEFAULTS = {
     "integration_branch": None,  # derived from the remote
     "models": "",
+    "routing": "",
     "reviewer_models": "auto",
     "quota_probe": shlex.quote(str(SKILLS / "quota-gate" / "scripts" / "quota-probe")),  # a path may hold spaces
     "quota_source": ".jstack/quota.txt",
@@ -53,6 +56,23 @@ def block(agents: Path) -> dict[str, str]:
     return values
 
 
+def user_file(env) -> Path:
+    return Path(env.get("JSTACK_USER_SETTINGS") or Path.home() / ".config" / "jstack" / "settings")
+
+
+def user_values(env) -> dict[str, str]:
+    """The operator's own settings: plain `key: value` lines for every repo on this machine."""
+    path = user_file(env)
+    if not path.is_file():
+        return {}
+    values: dict[str, str] = {}
+    for line in path.read_text().splitlines():
+        match = re.match(r"^([a-z_]+):\s*(.*?)\s*$", line)
+        if match:
+            values[match.group(1)] = re.sub(r"\s{2,}#.*$", "", match.group(2)).strip()
+    return values
+
+
 def default_branch(repo: Path) -> str:
     proc = subprocess.run(["git", "-C", str(repo), "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
                           capture_output=True, text=True)
@@ -62,12 +82,15 @@ def default_branch(repo: Path) -> str:
 def resolve(repo: Path, env: dict[str, str] | None = None) -> dict[str, str]:
     env = os.environ if env is None else env
     configured = block(repo / "AGENTS.md")
+    mine = user_values(env)
     out: dict[str, str] = {}
     for key, default in DEFAULTS.items():
         if f"JSTACK_{key.upper()}" in env:
             out[key] = env[f"JSTACK_{key.upper()}"]
         elif key in configured:
             out[key] = configured[key]
+        elif key in mine:
+            out[key] = mine[key]
         else:
             out[key] = default if default is not None else default_branch(repo)
     return out

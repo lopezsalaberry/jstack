@@ -36,10 +36,14 @@ fails its own checks.
 Settings (see `jstack`): `reviewer_models`, `quota_probe`. The reviewer must never be the
 reason a change is stuck: there is always a next candidate, and a refusal sends you to it.
 
-1. **Candidates, in order.** The entries of `reviewer_models`. An entry `auto` stands for every
-   model the harness can start (list them with the "List the models" action in `jstack`), models
-   from a family other than the author's first. Drop any candidate that is the author's own
-   session.
+1. **Candidates, in order.** The entries of `reviewer_models`. An entry is `provider:model`, a bare
+   `provider` (any of its models; take the strongest one of a family other than the author's), or
+   `auto`, which stands for every model the harness can start (list them with the "List the models"
+   action in `jstack`), models from a family other than the author's first. Drop any candidate that
+   is the author's own session. The list is the operator's permission to fall through it: never stop
+   to ask which provider to use while a candidate is left, and no remembered preference (a note, an
+   earlier instruction) turns a refusal into a question. Two reviews once stopped for that and held a
+   deploy.
 2. **Skip what is known to be out.** Before you start any candidate, run `<quota_probe> --provider <provider>`
    for each candidate's provider: the command is the `quota_probe` setting (`jstack-settings quota_probe`
    prints it; the contract is in `quota-gate`). Exit 1 (at 0% or marked exhausted): skip it. Exit 0 or 2: it is
@@ -48,7 +52,9 @@ reason a change is stuck: there is always a next candidate, and a refusal sends 
 3. **Try it.** Start the reviewer with the harness's delegate action, do not end your turn, and wait at most
    2 minutes for its first output with the "Check that a started agent answered" action in `jstack`. If it fails for quota, rate limit, authentication or availability, or stays silent for
    those 2 minutes (silence is a refusal, see `quota-gate`), mark the provider exhausted as `quota-gate`
-   describes and go to the next candidate immediately. Do not retry the same provider and do not wait.
+   describes (with `--until` when the refusal names a reset) and go to the next candidate immediately.
+   Do not retry the same provider and do not wait. The reviewer's model and effort are named in the
+   delegate call (see "Pick the model" in `quota-gate`).
 4. **Independence ladder.** Take the best level any candidate gives, and write it in the ledger:
    - **L1** a model from another family than the author's.
    - **L2** a different model from the same family.
@@ -84,6 +90,11 @@ cannot reproduce here): list under UNPROVEN with the exact code path, one line e
 ```
 
 ## 4. Answer
+
+Do not wait idle: as each finding arrives, rerun its command at once and decide what to fix while the
+reviewer finishes the others. Do not edit the checkout the reviewer is reading until its reply is in.
+When the operator has said a reviewer is non-blocking, do not wait for it: a late reply is feedback, and
+it does not become the verdict.
 
 Rerun each finding's command yourself. What may block the merge is defined in "What blocks" in
 `full-send`; apply it to every finding. It reproduces and breaks the intent: smallest

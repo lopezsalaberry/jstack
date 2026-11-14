@@ -69,6 +69,15 @@ MUTATIONS = {
     "test files are linted as UI": (
         "skills/full-send/scripts/token-lint", ',**/__tests__/**,**/*.test.*,**/*.spec.*"', '"',
         "tests/test_tools.py::test_token_lint_does_not_treat_test_files_as_ui"),
+    "the operator's own settings are ignored": (
+        "skills/jstack/scripts/jstack-settings", "        elif key in mine:", "        elif False:",
+        "tests/test_tools.py::test_the_operators_own_settings_sit_between_the_repo_and_the_default"),
+    "a reset moment is replaced by an hour": (
+        "skills/quota-gate/scripts/quota-probe", "expires = parse_until(args.until, now)", "expires = now + 3600",
+        "tests/test_tools.py::test_until_marks_a_provider_for_as_long_as_its_refusal_lasts"),
+    "a mark months away is accepted": (
+        "skills/quota-gate/scripts/quota-probe", "    if when > now + MAX_UNTIL_DAYS * 86400:", "    if False:",
+        "tests/test_tools.py::test_until_marks_a_provider_for_as_long_as_its_refusal_lasts"),
     "a bot that never reviews is still waited for": (
         "skills/babysit-pr/scripts/pr-wait", "if green and (reviewed or not GATING_BOTS):", "if green and reviewed:",
         "tests/test_tools.py::test_pr_wait_ready_does_not_wait_for_bots_that_are_not_configured"),

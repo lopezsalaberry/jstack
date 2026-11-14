@@ -141,6 +141,26 @@ def test_a_mark_works_without_any_quota_source_and_expires(tmp_path):
     assert run([PROBE, "--provider", "gamma"], cwd=tmp_path, env=marks).returncode == 2   # back to unknown
 
 
+def test_until_marks_a_provider_for_as_long_as_its_refusal_lasts(tmp_path):
+    """2026-11-12: a monthly cap (back on the 1st) was marked for the default hour, so the next worker tried it again."""
+    marks = {"JSTACK_QUOTA_MARKS": str(tmp_path / "marks.txt")}
+    later = time.strftime("%Y-%m-%dT%H:%M", time.localtime(time.time() + 20 * 86400))
+    done = run([PROBE, "--mark-exhausted", "cursor", "--until", later, "--reason", "monthly cap"], cwd=tmp_path, env=marks)
+    assert done.returncode == 0 and "marked exhausted until" in done.stdout, (done.stdout, done.stderr)
+    expires = float((tmp_path / "marks.txt").read_text().split()[1])
+    assert 19 * 86400 < expires - time.time() < 21 * 86400, "about 20 days, not the hour --minutes would give"
+    assert run([PROBE, "--provider", "cursor"], cwd=tmp_path, env=marks).returncode == 1
+    far = time.strftime("%Y-%m-%d", time.localtime(time.time() + 90 * 86400))
+    for text, why in (("2020-01-01", "already past"), (far, "days away"), ("tomorrow-ish", "not an ISO")):
+        bad = run([PROBE, "--mark-exhausted", "x", "--until", text], cwd=tmp_path, env=marks)
+        assert bad.returncode == 64 and why in bad.stderr, (text, bad.stderr)   # 64, never the 2 that means "unknown"
+    both = run([PROBE, "--mark-exhausted", "x", "--minutes", "5", "--until", later], cwd=tmp_path, env=marks)
+    assert both.returncode == 64 and "exclusive" in both.stderr
+    epoch = run([PROBE, "--mark-exhausted", "y", "--until", str(int(time.time()) + 7200)], cwd=tmp_path, env=marks)
+    assert epoch.returncode == 0, "epoch seconds are accepted too"
+    assert run([PROBE, "--mark-exhausted", "z"], cwd=tmp_path, env=marks).stdout.strip().endswith("for 60 min")
+
+
 def test_reviewer_models_defaults_to_auto_and_the_preference_syntax_parses(tmp_path):
     r = repo(tmp_path, "# P\n\n## jstack settings\nreviewer_models: provider-a:model-x, auto\n")
     assert run([SETTINGS, "--repo", r, "reviewer_models"], cwd=tmp_path).stdout.strip() == "provider-a:model-x, auto"
@@ -148,6 +168,27 @@ def test_reviewer_models_defaults_to_auto_and_the_preference_syntax_parses(tmp_p
     other.mkdir()
     plain = repo(other)
     assert run([SETTINGS, "--repo", plain, "reviewer_models"], cwd=tmp_path).stdout.strip() == "auto"
+
+
+def test_the_operators_own_settings_sit_between_the_repo_and_the_default(tmp_path):
+    """2026-11-14: the reviewer order lived in a note and in one repo, so a refusal turned into a question. The operator's
+    preference must reach every repo without editing each AGENTS.md, and a repo may still replace it."""
+    user = tmp_path / "mine.txt"
+    user.write_text("# my defaults\nreviewer_models: codex, cursor, auto  # my order\nrouting: UI and UX work: the strongest model\n"
+                    "models: pinned:one\n")
+    r = repo(tmp_path, "# P\n\n## jstack settings\nmodels: repo:two\n")
+    env = {"JSTACK_USER_SETTINGS": str(user)}
+    out = json.loads(run([SETTINGS, "--repo", r, "--json"], cwd=tmp_path, env=env).stdout)
+    assert out["reviewer_models"] == "codex, cursor, auto"        # from the operator's file, inline comment stripped
+    assert out["routing"] == "UI and UX work: the strongest model"
+    assert out["models"] == "repo:two"                            # the repo's value replaces the operator's
+    over = run([SETTINGS, "--repo", r, "reviewer_models"], cwd=tmp_path, env={**env, "JSTACK_REVIEWER_MODELS": "x"})
+    assert over.stdout.strip() == "x"                             # the environment still wins
+    assert run([SETTINGS, "--repo", r, "routing"], cwd=tmp_path).stdout.strip() == ""    # no file: the default
+    home_file = tmp_path / ".config" / "jstack" / "settings"      # HOME is the working directory in these tests
+    home_file.parent.mkdir(parents=True)
+    home_file.write_text("routing: from the home file\n")
+    assert run([SETTINGS, "--repo", r, "routing"], cwd=tmp_path).stdout.strip() == "from the home file"
 
 
 # --- doctor -----------------------------------------------------------------

@@ -19,14 +19,18 @@ the newest `vX.Y.Z` tag on its `origin`.
 ## Settings
 
 Put them in the repo's `AGENTS.md` under a heading `## jstack settings`, one
-`key: value` per line. Read the resolved values with `scripts/jstack-settings [key]`.
-Precedence: environment `JSTACK_<KEY>` over `AGENTS.md` over the default.
+`key: value` per line. Settings that are the operator's rather than the repo's (which reviewers to
+prefer, which models to suggest) go in `~/.config/jstack/settings`, plain `key: value` lines with `#`
+comments, and apply to every repo on the machine. Read the resolved values with `scripts/jstack-settings [key]`.
+Precedence: environment `JSTACK_<KEY>` over the repo's `AGENTS.md` over the operator's file over the
+default; a repo's value replaces the operator's for that key.
 
 | Key | Default | Meaning |
 |---|---|---|
 | `integration_branch` | the remote's default branch | Where green tickets merge |
-| `models` | empty | Ordered `provider:model` list for workers. Empty: use the model the harness already runs, no switching |
-| `reviewer_models` | `auto` | Ordered preference for `cross-review`: entries are `provider:model` or `auto` (any model the harness can start, other families first). Example: `provider-a:model-x, auto` means prefer that model, otherwise whatever is available |
+| `models` | empty | A pin: ordered `provider:model` list for workers, first one with quota wins; `inherit-parent` as an entry means the parent's model. Empty: the orchestrator picks a model for each task from what the harness can start, guided by `routing` |
+| `routing` | empty | Free text the orchestrator reads when it picks a model: what to prefer for which kind of task (for example `UI and UX work: the strongest model; native builds: provider-b`). A suggestion, not a rule: the orchestrator may differ and says why in the trail. Set `models` to pin |
+| `reviewer_models` | `auto` | Ordered preference for `cross-review`: entries are `provider:model`, a bare `provider` (its strongest model of another family than the author) or `auto` (any model the harness can start, other families first). Example: `provider-a, provider-b, auto` means the first one that has quota, and a fresh session of whatever is left when none does |
 | `quota_probe` | the probe shipped with `quota-gate` | Command that answers whether a provider has quota. Contract in `quota-gate` |
 | `quota_source` | `.jstack/quota.txt` | File the shipped probe reads |
 | `quota_max_age_minutes` | `30` | Older data counts as unknown |
@@ -56,6 +60,9 @@ needs only `git`, `gh` and `python3`.
 | List the models and providers you can start | the `/model` menu | `orchestrator_capabilities` | the model picker | Try the entries of the list in order: a refusal for quota, authentication or availability is the answer |
 
 Never use two watchers on one PR. A delegated child never watches a PR its parent owns.
+
+Every delegate names its model and its effort; see "Pick the model" in `quota-gate`. A child that is not
+told inherits its parent's.
 
 ## Status words
 

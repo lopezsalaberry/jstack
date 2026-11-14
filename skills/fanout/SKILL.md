@@ -23,11 +23,14 @@ description: "Run many independent tickets in parallel, one worker per distinct 
    together, each in its own worktree and branch. A ticket with no declared file set is
    exclusive and runs alone.
 2. **Gate.** Apply `quota-gate` before each launch.
-3. **Launch** one background worker per ticket with the model `quota-gate` picks,
-   using the harness's way to delegate a task (see `jstack`). Each worker runs
+3. **Launch** one background worker per ticket with the model and effort `quota-gate` picks, named in
+   the delegate call, using the harness's way to delegate a task (see `jstack`). Each worker runs
    `ticket-start` once, then `full-send`.
 4. **Drain.** As workers report, launch the next ticket. Escalate `BLOCKED`
-   tickets to the operator in one consolidated message. `WAITING <condition>` is
+   tickets to the operator in one consolidated message. A worker that stopped because its provider
+   refused (quota, rate limit, authentication) is not parked: mark the provider as `quota-gate` says and
+   relaunch ONE fresh worker for the same ticket at once on the next candidate, from its WIP commit and
+   `RUNSTATE.md`. Park it only when no candidate can start. `WAITING <condition>` is
    parked, not done: when the condition holds (the `quota-gate` probe passes, a
    timestamp, or "now" for time and context) relaunch ONE fresh worker for the same
    ticket from its WIP commit and `RUNSTATE.md`, with a new brief that points to

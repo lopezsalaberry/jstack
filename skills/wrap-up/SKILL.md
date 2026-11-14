@@ -9,7 +9,10 @@ Run by the parent session, never by a worker. Nothing here is scheduled. It puts
 `evidence` and `full-send` in order at the end of a wave and adds the checks below. `fanout`'s final table is the
 log; the recap in step 4 is what the operator reads.
 
-1. **Collect** the wave's candidates by status word, from `fanout/scripts/wave-status` and the open PRs. A
+1. **Collect** the wave's candidates by status word, from `fanout/scripts/wave-status` and the open PRs.
+   Start from what the wave launched, not from what reported (the worktrees, the `delegate` rows of the
+   trail, the delegated threads): each worker is done, replaced or absorbed into another's scope, and one
+   that never reported is a finding, not an absence. A
    `READY_FOR_INTEGRATOR` row whose PR is already merged or closed is old: ignore it. A report is not evidence:
    read the real artifact (the PR or branch, the head SHA, the checks). When the description, the bot summary and
    the code disagree, the code at the head and the checks win. For an `INTEGRATED` report, confirm the merge
@@ -33,9 +36,12 @@ log; the recap in step 4 is what the operator reads.
      the head it names.
    - Write down what the worker said it did not verify and what you did not check.
 3. **Decide each one**, before anything is merged.
-   - Send it back with the failing criterion: to the worker's thread when the harness lets you message it,
-     otherwise one fresh worker per `fanout` step 4. Write the send-back in the ticket's comment; a ticket whose
-     comments show two send-backs goes into the question instead.
+   - Send it back with the failing criterion, to one fresh worker with the whole brief (the original brief,
+     every later decision, the previous report and the branch), per `fanout` step 4. Message the old worker
+     only when what the fix needs lives in it and is costly to move (its checkout, uncommitted changes, a
+     running process): a message restarts an idle agent, and a chain of resumes drops instructions. Write the
+     send-back in the ticket's comment; a ticket whose comments show two send-backs goes into the question
+     instead.
    - Leave it READY with the reason.
    - Offer to merge only when every criterion is met and the Merge gate of `full-send` is green on the head.
      Merging is the operator's call: it goes in the question as an option that names the PR and its head, and says

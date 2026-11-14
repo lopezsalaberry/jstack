@@ -2,7 +2,7 @@
 """quota-probe: report how much quota each provider account has left, from a plain file.
 
   quota-probe [--source FILE] [--max-age MINUTES] [--provider NAME]
-  quota-probe --mark-exhausted NAME [--minutes N] [--reason TEXT]
+  quota-probe --mark-exhausted NAME [--minutes N | --until WHEN] [--reason TEXT]
   quota-probe --clear NAME
 
 The source file has one line per account: `<provider> <account> <percent remaining>`.
@@ -18,7 +18,10 @@ With --provider NAME, exit
 
 Marks: when starting a model fails for quota, rate limit, authentication or unavailability, run
 --mark-exhausted NAME. For the next N minutes (default 60) --provider NAME exits 1 whatever the
-source says, so no other worker retries a provider that just refused. --clear NAME removes the
+source says, so no other worker retries a provider that just refused. When the refusal names when the
+provider answers again (a monthly cap, "try again at 13:50"), pass that moment as --until WHEN, an ISO
+date or date-time in local time (2026-12-01, 2026-11-16T13:50) or epoch seconds, so the mark lasts as long
+as the refusal does; a past time or one more than 45 days away is a usage error. --clear NAME removes the
 mark. Marks live in $JSTACK_QUOTA_MARKS or ~/.config/jstack/quota-marks.txt (per machine, not
 per repo: quota belongs to the account), one line `<provider> <expires epoch> <reason>`.
 
@@ -41,6 +44,7 @@ import shutil
 import subprocess
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 
@@ -66,6 +70,26 @@ def parse(path: Path) -> list[tuple[str, str, float]]:
             print(f"quota-probe: {path}:{number}: expected '<provider> <account> <percent>'", file=sys.stderr)
             sys.exit(2)
     return rows
+
+
+MAX_UNTIL_DAYS = 45
+
+
+def parse_until(text: str, now: float) -> float:
+    """Epoch seconds for --until: ISO date or date-time in local time, or epoch seconds. ValueError when unusable."""
+    text = text.strip()
+    try:
+        when = float(text)
+    except ValueError:
+        try:
+            when = datetime.fromisoformat(text).timestamp()  # a naive value is local time
+        except ValueError:
+            raise ValueError(f"--until {text!r} is not an ISO date, an ISO date-time or epoch seconds") from None
+    if when <= now:
+        raise ValueError(f"--until {text!r} is already past")
+    if when > now + MAX_UNTIL_DAYS * 86400:
+        raise ValueError(f"--until {text!r} is more than {MAX_UNTIL_DAYS} days away; a mark that long hides a provider that may be back")
+    return when
 
 
 def marks_file() -> Path:
@@ -125,7 +149,8 @@ def main() -> None:
     ap.add_argument("--provider")
     ap.add_argument("--mark-exhausted", metavar="NAME")
     ap.add_argument("--clear", metavar="NAME")
-    ap.add_argument("--minutes", type=float, default=60)
+    ap.add_argument("--minutes", type=float)
+    ap.add_argument("--until", metavar="WHEN")
     ap.add_argument("--reason", default="start failed")
     ap.add_argument("--max-age", type=float,
                     default=float(os.environ.get("JSTACK_QUOTA_MAX_AGE_MINUTES", "30")))
@@ -138,8 +163,19 @@ def main() -> None:
     if args.mark_exhausted or args.clear:
         marks = live_marks(now)
         if args.mark_exhausted:
-            marks[args.mark_exhausted] = (now + args.minutes * 60, args.reason.replace("\n", " "))
-            print(f"quota-probe: {args.mark_exhausted} marked exhausted for {args.minutes:g} min")
+            if args.until and args.minutes is not None:
+                ap.error("--minutes and --until are exclusive")
+            if args.until:
+                try:
+                    expires = parse_until(args.until, now)
+                except ValueError as error:
+                    ap.error(str(error))
+                lasts = f"until {datetime.fromtimestamp(expires):%Y-%m-%d %H:%M}"
+            else:
+                minutes = 60 if args.minutes is None else args.minutes
+                expires, lasts = now + minutes * 60, f"for {minutes:g} min"
+            marks[args.mark_exhausted] = (expires, args.reason.replace("\n", " "))
+            print(f"quota-probe: {args.mark_exhausted} marked exhausted {lasts}")
         else:
             marks.pop(args.clear, None)
             print(f"quota-probe: {args.clear} mark cleared")

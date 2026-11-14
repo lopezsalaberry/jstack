@@ -10,7 +10,7 @@ are not this review: neither runs the change.
 
 | Mode | When | The reviewer |
 |---|---|---|
-| **Break** | The change touches production data or migrations, payments, auth or credentials, concurrency, security, or a production deploy | tries to break it with a run; what it cannot prove is dropped |
+| **Break** | The change touches production data or migrations, payments, auth or credentials, concurrency, security, a production deploy, or a shared component or module that many screens or callers go through | tries to break it with a run; what it cannot prove is dropped |
 | **Verify** | The change is user-visible (screens, command output, API responses) and `verify_mode` is not `off` (`always` means every code change) | uses the delivered artifact as a user would, criterion by criterion |
 
 Everything else relies on the author's own proof (`ticket`). One round, one reviewer, and the reviewer starts no
@@ -24,8 +24,10 @@ tree. Run the ticket's own checks first: do not send code that fails them.
 ## 2. Pick the reviewer
 
 The reviewer must never be why a change is stuck. Walk `reviewer_models` (see `jstack`) in order. An entry is
-`provider:model`, a bare `provider` (its strongest model of another family than the author's) or `auto` (anything
-the harness can start, other families first). Never the author's own session.
+`provider:model`, a bare `provider` (a model of another family than the author's) or `auto` (anything the harness
+can start, other families first). Never the author's own session. When only the author's provider answers, take
+another model of it before the author's own model, and the cheaper of two that are equally independent: a review
+needs a different pair of eyes, not the strongest model.
 
 1. **Probe, then start.** For each candidate run the `wave` skill's `scripts/quota-probe --provider <provider>`.
    Exit 1: skip it. Exit 0 or 2: start it, naming its model and effort. A list of models says what can start, not

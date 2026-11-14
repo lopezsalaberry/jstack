@@ -2,7 +2,7 @@
 """brief: write the brief of one worker, so that nothing a worker needs depends on the orchestrator remembering it.
 
   brief TICKET --goal TEXT --done-when TEXT --touches PATHS --model MODEL --effort LEVEL
-        [--surface NAME] [--stop-before-merge] [--note TEXT] [--repo PATH]
+        [--surface NAME] [--remote NAME] [--stop-before-merge] [--note TEXT] [--repo PATH]
 
 Prints a brief that stands alone: the ticket, the files it may touch, the observable condition that ends it, the
 integration branch from the repo's settings, how to work (the `ticket` skill, the evidence checklist, the `check`
@@ -47,6 +47,7 @@ def main(argv: list[str]) -> int:
     for name in ("goal", "done-when", "touches", "model", "effort"):
         ap.add_argument(f"--{name}", required=True)
     ap.add_argument("--surface", default="")
+    ap.add_argument("--remote", default="origin", help="the remote of the integration branch, when it is not origin (a fork)")
     ap.add_argument("--stop-before-merge", action="store_true")
     ap.add_argument("--note", default="")
     ap.add_argument("--repo", type=Path, default=Path.cwd())
@@ -62,6 +63,7 @@ def main(argv: list[str]) -> int:
     ui = touches_ui(root, values, touches)
     t = args.ticket
     surface = f" --surface {args.surface.strip()}" if args.surface.strip() else ""
+    base = "" if args.remote == "origin" else f" --base {args.remote}/{branch}"
     lines = [
         f"Ticket {t}: {args.goal.strip()}",
         f"Repo: {root}. Integration branch: {branch}.",
@@ -69,10 +71,10 @@ def main(argv: list[str]) -> int:
         f"Done when: {args.done_when.strip()}",
         "",
         "How to work:",
-        f"- Follow the `ticket` skill end to end, in your own worktree and branch from origin/{branch}.",
+        f"- Follow the `ticket` skill end to end, in your own worktree and branch from {args.remote}/{branch}.",
         "- The commands named below (`checklist-init`, `check`, `publish`) are in that skill's `scripts/` folder.",
         f"- Start the evidence before the change: `checklist-init {t}{surface}`.",
-        f"- Before you finish, run `check {t} --pr <number>` and paste what it prints in the PR. Every line must be PASS or SKIP.",
+        f"- Before you finish, run `check {t} --pr <number>{base}` and paste what it prints in the PR. Every line must be PASS or SKIP.",
         ("- Do not merge. Leave the PR open and green and report READY_FOR_INTEGRATOR: this repo has one integrator."
          if args.stop_before_merge else
          f"- Merge the PR into {branch} when `check` is green. Do not wait for other tickets."),

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """publish: put a ticket's before and after where the person reading the pull request can see them.
 
-  publish TICKET [--pr N] [--not-shown TEXT] [--repo PATH] [--base REF] [--web-base URL]
+  publish TICKET [--pr N] [--not-shown TEXT] [--repo PATH] [--base REF] [--remote NAME] [--web-base URL]
                  [--max-files 8] [--max-mb 2] [--dry-run]
 
 `.artifacts/<ticket>/` is not in git, so a PR that says "screenshots are under .artifacts/" shows the reader nothing.
@@ -13,7 +13,7 @@ Name the files by what they show, in `.artifacts/<ticket>/`:
   before.txt          after.txt           the failing output before the fix and the passing output after it
 A state with only an `after-` file is something new. Other files in the folder are not published.
 
-The files go to `refs/jstack-evidence/<ticket>` on `origin`, a ref of its own: a normal `git fetch` or clone does not
+The files go to `refs/jstack-evidence/<ticket>` on `origin` (or --remote NAME, for a fork whose `origin` is upstream), a ref of its own: a normal `git fetch` or clone does not
 download it, no branch carries the images, and deleting the ref removes them. Git plumbing only: the working tree,
 the index and the repo's branches are not touched. With --pr N the block replaces the one an earlier run left in the PR
 description. Say what the proof does not cover with --not-shown; without it the block carries a TODO that `check` refuses.
@@ -79,12 +79,12 @@ def identity(root: Path) -> dict:
     return {"GIT_AUTHOR_NAME": name, "GIT_AUTHOR_EMAIL": email, "GIT_COMMITTER_NAME": name, "GIT_COMMITTER_EMAIL": email}
 
 
-def commit_files(root: Path, ref: str, files: list[Path], revision: str, push: bool) -> tuple[str, dict]:
+def commit_files(root: Path, ref: str, files: list[Path], revision: str, push: bool, remote: str = "origin") -> tuple[str, dict]:
     """Add the files to the ticket's evidence ref with plumbing and push it. Returns the commit and each file's path in it."""
     parent = None
     try:
-        if git(root, "ls-remote", "origin", ref):
-            git(root, "fetch", "-q", "origin", ref)
+        if git(root, "ls-remote", remote, ref):
+            git(root, "fetch", "-q", remote, ref)
             parent = git(root, "rev-parse", "FETCH_HEAD")
     except Fail:
         if push:
@@ -102,7 +102,7 @@ def commit_files(root: Path, ref: str, files: list[Path], revision: str, push: b
             return parent, paths  # the same files were published before
         commit = git(root, "commit-tree", tree, "-m", f"evidence at {revision}", *(["-p", parent] if parent else []), env=env)
     if push:
-        git(root, "push", "-q", "origin", f"{commit}:{ref}")
+        git(root, "push", "-q", remote, f"{commit}:{ref}")
     return commit, paths
 
 
@@ -146,6 +146,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--repo", type=Path, default=Path.cwd())
     ap.add_argument("--pr")
     ap.add_argument("--base")
+    ap.add_argument("--remote", default="origin")
     ap.add_argument("--not-shown", default=TODO)
     ap.add_argument("--web-base")
     ap.add_argument("--max-files", type=int, default=8)
@@ -167,17 +168,17 @@ def main(argv: list[str]) -> int:
         if len(files) > args.max_files or large:
             why = f"{len(files)} files (limit {args.max_files})" if len(files) > args.max_files else f"over {args.max_mb:g} MB: {', '.join(large)}"
             raise Fail(f"{why}. Keep the few that carry the proof (crop or shrink a large one); the rest stay in {source}", code=2)
-        origin = subprocess.run(["git", "-C", str(root), "remote", "get-url", "origin"], capture_output=True, text=True).stdout.strip()
+        origin = subprocess.run(["git", "-C", str(root), "remote", "get-url", args.remote], capture_output=True, text=True).stdout.strip()
         web = (args.web_base or "").rstrip("/") or (web_base_of(origin) if origin else None)
         if not web:
             names = "\n".join(f"  {p}" for p in files)
             raise Fail(f"origin ({origin or 'none'}) cannot serve these to a reader, so they stay local; show them in your "
                        f"message, or pass --web-base https://github.com/<owner>/<repo>:\n{names}", code=2)
         head = git(root, "rev-parse", "HEAD")
-        branch = args.base or "origin/" + subprocess.run([sys.executable, str(SETTINGS), "--repo", str(root), "integration_branch"],
+        branch = args.base or f"{args.remote}/" + subprocess.run([sys.executable, str(SETTINGS), "--repo", str(root), "integration_branch"],
                                                          capture_output=True, text=True).stdout.strip()
         base = git(root, "merge-base", branch, "HEAD")
-        commit, paths = commit_files(root, f"refs/jstack-evidence/{args.ticket}", files, head[:10], push=not args.dry_run)
+        commit, paths = commit_files(root, f"refs/jstack-evidence/{args.ticket}", files, head[:10], push=not args.dry_run, remote=args.remote)
         text = block(web, commit, base, head, states, output, paths, args.not_shown.strip() or TODO)
         if args.pr and not args.dry_run:
             put_in_pr(root, args.pr, text)

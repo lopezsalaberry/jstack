@@ -17,8 +17,7 @@ deletion or anything outside the repo. A worker started by `wave` is in full sen
 
 1. If the ticket already has a worktree, use it. Otherwise `git fetch origin`, then look for overlap: the files
    of open PRs (`gh pr list`, `gh pr diff <n> --name-only`) and of the other worktrees.
-2. `git worktree add <a folder outside the checkout>/<name> -b <prefix>/<name> origin/<integration branch>`, with a
-   new name. Never reuse another ticket's worktree and never edit the integration branch.
+2. `git worktree add <a folder outside the checkout>/<name> -b <prefix>/<name> origin/<integration branch>`. Never reuse another ticket's worktree and never edit the integration branch.
 3. `scripts/checklist-init <ticket>`, before the first edit. Write each thing the ticket asks for as a row: a
    statement someone could test, such as "it saves the note and shows it in the list".
 4. A UI ticket (it touches `ui_paths`, see `jstack`): read the design sources (`design_tokens`, the project's
@@ -45,7 +44,8 @@ Only 4 and 5 are `PASS`. Below that write "unproven (level N)".
 - Run what the repo's CI runs. Open and drive the app with the repo's `verify-<app>` skill.
 - For UI and runtime behavior, run the app and look. Green tests with mocks do not show that it works for a user.
 - A test earns its place if it fails when you break the behavior and still passes when you change only the
-  internals. Prefer no new test to a bad one. Never change a test to match a wrong implementation.
+  internals. Test every case the ticket names (each language, each state), not one of them. Never change a test to
+  match a wrong implementation.
 - UI: capture `after-<state>.png` for each `before-`, at the sizes the app supports. Look at every capture: nothing
   cut off, nothing truncated. Compare with the design source and list each mismatch. A mismatch you cannot resolve
   is `BLOCKED(decision)` with the capture beside the design.
@@ -61,8 +61,7 @@ When the proof is final: `scripts/proof-valid --stamp .artifacts/<ticket>/checkl
 
 ## 4. Pull request
 
-Rebase onto the integration branch, check that the branch has no PR yet, and open a real PR (not a draft, so review
-bots run). The title follows the repo's convention and says why it matters, not what was edited. The description:
+Rebase onto the integration branch, check that the branch has no PR yet, and open a real PR, not a draft. The title follows the repo's convention and says why it matters, not what was edited. The description:
 
 ```
 <the problem as the user met it, then the fix: two or three sentences, no inventory of edits>
@@ -78,9 +77,9 @@ bots run). The title follows the repo's convention and says why it matters, not 
 
 `scripts/publish <ticket> --pr <number> --not-shown "<what the proof does not cover>"` adds the `## Evidence` section (do not write that heading yourself):
 a Before / After table, one row per state, from the `before-` and `after-` files. A path under `.artifacts/` shows
-the reader nothing. Show the same before and after
-in your own messages while you work. The `Review:` line comes from `review`; leave it out when none ran. Read the
-title and description for secrets before you post.
+the reader nothing. The `Review:` line comes from `review`; leave it out when none ran. Claim
+nothing the checkout does not hold: no test you did not write, no run you did not do. Read the title and description
+for secrets before you post.
 
 ## 5. Until it is green
 
@@ -116,7 +115,7 @@ can check, so three things stay yours: a high-risk or user-visible change that t
 skill even when `check` skips the review line; a red CI job that never ran a step is explained next to the output; and the checklist is never edited
 to make a line pass.
 
-Merge with the method the repo uses (look at recent merged PRs), through branch protection, never with `--admin`.
+Merge with the method the repo uses, through branch protection, never with `--admin`.
 Do not hold a green ticket for a batch. If the operator asked to
 stop before merging, or the repo has one integrator, leave the PR open and green and report `READY_FOR_INTEGRATOR`
 with the PR and its head. After the merge remove the worktree and the branch (`git branch -D`; `-d` refuses after a

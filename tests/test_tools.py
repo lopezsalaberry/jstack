@@ -1077,3 +1077,24 @@ def test_brief_asks_for_proof_on_the_surface_the_ticket_names(tmp_path):
         assert needed in done.stdout, needed
     plain = _brief(r, "--touches", "server/api.py", "--model", "m", "--effort", "low")
     assert "Surface:" not in plain.stdout and "`checklist-init T-7`" in plain.stdout
+
+
+def test_a_fork_whose_origin_is_upstream_publishes_and_branches_from_its_own_remote(tmp_path):
+    """A real repo: `origin` is the upstream project (push disabled) and the work lives on a remote called `private`."""
+    r, upstream = _with_origin(tmp_path)
+    mine = tmp_path / "mine.git"
+    mine.mkdir()
+    git(mine, "init", "-q", "--bare")
+    git(r, "remote", "add", "private", str(mine))
+    git(r, "push", "-q", "private", "main")
+    shots = r / ".artifacts" / "T-1"
+    shots.mkdir(parents=True)
+    (shots / "after-home.png").write_bytes(b"x")
+    done = run([PUBLISH, "T-1", "--repo", r, "--remote", "private", "--web-base", WEB, "--base", "main"], cwd=tmp_path)
+    assert done.returncode == 0, done.stderr
+    assert "jstack-evidence/T-1" in _out("git", "-C", mine, "for-each-ref") and "jstack-evidence" not in _out("git", "-C", upstream, "for-each-ref"), \
+        "the pictures go to the fork, never to upstream"
+    (tmp_path / "b").mkdir()
+    plain = repo(tmp_path / "b", "# P\n\n## jstack settings\nintegration_branch: open-training\n")
+    text = _brief(plain, "--touches", "server/api.py", "--model", "m", "--effort", "low", "--remote", "private").stdout
+    assert "branch from private/open-training" in text and "`check T-7 --pr <number> --base private/open-training`" in text

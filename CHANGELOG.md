@@ -44,6 +44,11 @@ short card when every session must know it, a skill for the rest.
   ticket said "on iPhone at 402 pt", both workers proved it in Chromium at that width, wrote "not verified on a real
   iPhone", passed their gates, and the check went to the operator.
 - `ticket` says what to do in a repo with no pull requests, and that a fact a run can settle is not the operator's to check.
+- Three rules from six real tickets: test every case the ticket names and claim nothing the checkout does not hold; a
+  shared component or module many callers go through gets a break review; and a reviewer from the author's own provider is
+  another model of it before the author's own, the cheaper of two that are equally independent.
+- `publish --remote NAME` and `brief --remote NAME` for a fork whose `origin` is upstream, so pictures and branches use
+  the fork.
 
 ### Fixed, from an independent review before release
 A reviewer of another model family ran both versions blind and proved these with commands; each is now a test.

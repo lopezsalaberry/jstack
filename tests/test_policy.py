@@ -199,3 +199,15 @@ def test_a_ticket_is_proven_where_it_has_to_work_and_the_operator_is_not_the_tes
     assert "on this surface: <the one the ticket names, or the repo's main one>" in read("skills/review/SKILL.md")
     assert "the verifier's run there is the level 5 row of the checklist" in read("skills/review/SKILL.md")
     assert "add `--surface <name>` when the ticket names where it must work" in read("skills/wave/SKILL.md")
+
+
+def test_three_rules_from_the_first_real_tickets():
+    """2026-11-14, six real tickets: a pull request claimed a test that did not exist; one test covered one language of
+    five; a reviewer was the dearest model once and the author's own model another time while a different one was free;
+    and a fix to a component 73 menus use got no break review, because the list did not name shared pieces."""
+    ticket, review = read("skills/ticket/SKILL.md"), read("skills/review/SKILL.md")
+    assert "Test every case the ticket names (each language, each state), not one of them." in ticket
+    assert "Claim nothing the checkout does not hold: no test you did not write, no run you did not do." in ticket
+    assert "or a shared component or module that many screens or callers go through" in review
+    assert "take another model of it before the author's own model" in review
+    assert "the cheaper of two that are equally independent" in review

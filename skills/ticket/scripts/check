@@ -7,22 +7,24 @@ One line per rule: PASS, FAIL or SKIP (the rule does not apply, and why). Exit 0
 2 on a usage error. Whoever validates the ticket later runs the same command on the same head.
 
 Always:
-  branch       the work is on its own branch, not the integration branch
+  branch       the work is on its own branch, not the integration branch and not a detached HEAD
+  change       HEAD adds something over BASE
   clean tree   no uncommitted change to a tracked file
   up to date   the branch contains the tip of BASE (default origin/<integration_branch>, fetched first)
   proof        .artifacts/<ticket>/checklist.md records this patch (`proof-valid`), has a row per target,
-               no FAIL row and no PASS below level 4
+               and every row is PASS at level 4 or 5 ("unproven" and FAIL both fail)
   design       a change to `ui_paths` files passes `design_check`, or the shipped token-lint when it is empty
 With --pr N (needs `gh`):
   head         the PR's head is this HEAD
-  screenshot   a UI change shows a picture or video a reader can open, and its "Not shown" line is written
-  review       an independent verdict covers this patch when `verify_mode` asks for one, and none says CHANGES or FAIL
+  screenshot   a UI change links a picture or video file a reader can open, and its "Not shown" line is written
+  review       every `Review:` line is a good verdict on this patch; one is required for a UI change, or for every
+               change when `verify_mode` is `always`
   ci           no check failed and none is still running
-  mergeable    no conflict with the base, no review requesting changes
+  mergeable    GitHub says it can merge: no conflict with the base, no review requesting changes
 
 TICKET may be left out when `.artifacts/` holds exactly one checklist. This is what a command can check. It does
-not know whether a change is high-risk, whether a screenshot shows the right screen, or whether a red CI job ever
-ran a step: the `ticket` and `review` skills say what to do about those.
+not know whether a change with no UI file is high-risk or user-visible, whether a picture shows the right screen, or
+whether a red CI job ever ran a step: the `ticket` and `review` skills say what to do about those.
 """
 from __future__ import annotations
 
@@ -41,12 +43,12 @@ _loader = SourceFileLoader("jstack_settings", str(HERE.parents[1] / "jstack" / "
 settings = importlib.util.module_from_spec(importlib.util.spec_from_loader("jstack_settings", _loader))
 _loader.exec_module(settings)
 
-MEDIA = r"(?:png|jpe?g|gif|webp|mp4|mov|webm)"
+FILE = r"https?://[^)\s>\"']+\.(?:png|jpe?g|gif|webp|mp4|mov|webm)(?:\?[^)\s>\"']*)?"   # a link to a picture or video file
 PICTURE = [
-    re.compile(r"!\[[^\]]*\]\(\s*<?https?://[^)\s>]+"),                           # ![alt](https://...)
-    re.compile(r"<img\b[^>]*\bsrc=[\"']https?://[^\"']+", re.I),                 # <img src="https://...">
-    re.compile(r"https://github\.com/user-attachments/\S+"),                      # a file dropped into the PR box
-    re.compile(rf"\]\(\s*<?https?://[^)\s>]+\.{MEDIA}(?:\?[^)\s>]*)?\)", re.I),   # [video](https://.../x.mp4)
+    re.compile(rf"\]\(\s*<?{FILE}", re.I),                                       # ![alt](https://.../x.png), [clip](https://.../x.mp4)
+    re.compile(rf"<img\b[^>]*\bsrc=[\"']{FILE}", re.I),                          # <img src="https://.../x.png">
+    re.compile(r"https://github\.com/user-attachments/assets/[\w-]+"),           # a file dropped into the PR box
+    re.compile(r"https://private-user-images\.githubusercontent\.com/\S+"),
 ]
 NOT_A_SCREENSHOT = re.compile(r"vercel\.com/|vercel\.sh|shields\.io|/badge(?:\.svg|/)|avatars\.githubusercontent\.com|"
                               r"codecov\.io|badgen\.net", re.I)
@@ -72,7 +74,7 @@ def rows(checklist: str) -> list[tuple[str, str, str]]:
             continue
         if cells[0] == "Target" or cells[0].startswith("<"):
             continue
-        found.append((cells[0], cells[1].upper(), cells[2]))
+        found.append((cells[0], re.sub(r"[*`\s]", "", cells[1]).upper(), cells[2].strip("*` ")))
     return found
 
 
@@ -107,8 +109,9 @@ def main(argv: list[str]) -> int:
     say = lambda level, name, detail="": out.append((level, name, detail))
 
     branch = git("branch", "--show-current").stdout.strip()
-    say("FAIL" if branch == target else "PASS", "branch",
-        f"you are on {target}, the integration branch: move the work to its own branch" if branch == target else branch or "detached HEAD")
+    say("FAIL" if branch in (target, "") else "PASS", "branch",
+        f"you are on {target}, the integration branch: move the work to its own branch" if branch == target else
+        branch or "detached HEAD: check out the ticket's branch")
     dirty = git("status", "--porcelain", "--untracked-files=no").stdout.splitlines()
     say("FAIL" if dirty else "PASS", "clean tree", f"{len(dirty)} tracked file(s) with uncommitted changes, for example {dirty[0][3:]}" if dirty else "")
     if not args.base:
@@ -120,6 +123,7 @@ def main(argv: list[str]) -> int:
         current = git("merge-base", "--is-ancestor", base, "HEAD").returncode == 0
         say("PASS" if current else "FAIL", "up to date", "" if current else f"{base} has moved: rebase onto it and prove the change again")
         changed = [f for f in git("diff", "--name-only", git("merge-base", base, "HEAD").stdout.strip(), "HEAD").stdout.splitlines() if f]
+        say("PASS" if changed else "FAIL", "change", f"{len(changed)} file(s)" if changed else f"HEAD adds nothing over {base}: there is nothing to gate")
 
     checklist, why = find_checklist(root, args.ticket)
     if checklist is None:
@@ -127,13 +131,13 @@ def main(argv: list[str]) -> int:
     else:
         valid = run([sys.executable, str(HERE / "proof-valid"), "--checklist", str(checklist), "--base", base], root)
         targets = rows(checklist.read_text())
-        failed = [t for t, result, _ in targets if "FAIL" in result]
-        weak = [t for t, result, level in targets if "PASS" in result and not re.search(r"[45]", level)]
+        failed = [t for t, result, _ in targets if result != "PASS"]
+        weak = [t for t, result, level in targets if result == "PASS" and level not in ("4", "5")]
         problem = (("the patch changed since the proof was recorded: prove it again, then `proof-valid --stamp`" if valid.returncode == 1 else
                     "the checklist records no patch: run `proof-valid --stamp` once the proof is final") if valid.returncode != 0 else
                    "the checklist has no filled row: one row per thing the ticket asks for" if not targets else
-                   f"{len(failed)} target(s) FAIL, for example: {failed[0]}" if failed else
-                   f"{len(weak)} PASS below level 4 (not run), for example: {weak[0]}" if weak else "")
+                   f"{len(failed)} target(s) not PASS (FAIL or unproven), for example: {failed[0]}" if failed else
+                   f"{len(weak)} PASS without level 4 or 5 (not run), for example: {weak[0]}" if weak else "")
         say("FAIL" if problem else "PASS", "proof", problem or f"{len(targets)} target(s), {checklist.relative_to(root)}")
 
     ui = settings.ui_files(values, changed)
@@ -175,10 +179,13 @@ def main(argv: list[str]) -> int:
             verdicts = re.findall(r"(?m)^Review:.*?\bverdict\s+([A-Z+]+)(?:.*?\bpatch\s+([0-9a-f]{7,40}))?", body)
             needed = values["verify_mode"] != "off" and (bool(ui) or values["verify_mode"] == "always")
             bad = [v for v, _ in verdicts if v not in GOOD_VERDICT]
+            loose = [v for v, p in verdicts if v in GOOD_VERDICT and not p]
             stale = [p for v, p in verdicts if v in GOOD_VERDICT and p
                      and run([sys.executable, str(HERE / "proof-valid"), "--patch-id", p, "--base", base], root).returncode == 1]
             if bad:
                 say("FAIL", "review", f"a `Review:` line says {bad[0]}")
+            elif loose:
+                say("FAIL", "review", "a `Review:` line has no `patch <id>`, so nothing ties the verdict to this change")
             elif stale:
                 say("FAIL", "review", "the verdict covers an older patch: ask for a fresh one")
             elif verdicts:
@@ -186,7 +193,7 @@ def main(argv: list[str]) -> int:
             elif needed:
                 say("FAIL", "review", "this change needs an independent verdict (`verify_mode`) and the PR has no `Review:` line: see the `review` skill")
             else:
-                say("SKIP", "review", "`verify_mode` does not ask for one here; a high-risk change still needs it (see `review`)")
+                say("SKIP", "review", "no UI file changed, so a command cannot tell: if this change is high-risk or user-visible it still needs `review`")
             checks = pr.get("statusCheckRollup") or []
             name = lambda c: c.get("name") or c.get("context") or "?"
             red = [name(c) for c in checks if (c.get("conclusion") or c.get("state") or "").upper() in BAD_CI]
@@ -199,6 +206,7 @@ def main(argv: list[str]) -> int:
             else:
                 say("PASS" if checks else "SKIP", "ci", f"{len(checks)} check(s) green" if checks else "the PR has no checks")
             blockers = [text for flag, text in ((pr.get("mergeable") == "CONFLICTING", "conflicts with the base"),
+                                                (pr.get("mergeable") not in ("MERGEABLE", "CONFLICTING"), "GitHub has not said yet whether it can merge: run check again"),
                                                 (pr.get("reviewDecision") == "CHANGES_REQUESTED", "a review requests changes")) if flag]
             say("FAIL" if blockers else "PASS", "mergeable", "; ".join(blockers))
 

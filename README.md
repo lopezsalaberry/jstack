@@ -53,13 +53,13 @@ when the skills grow past a word budget, so a new paragraph has to replace an ol
 | Skill | Purpose |
 |---|---|
 | `jstack` | Reference: the rules card, settings, harness actions, status words, `RUNSTATE.md`; `doctor` |
-| `ticket` | One ticket from the first edit to the merged PR: worktree, proof, PR, `check`, merge. Tools: `checklist-init`, `proof-valid`, `token-lint`, `publish`, `check` |
+| `ticket` | One ticket from the first edit to the merged PR: worktree, proof, PR, `check`, merge. Tools: `checklist-init`, `proof-valid`, `token-lint`, `publish`, `check`, `pr-wait` |
 | `review` | One round by an agent that did not write the change: break mode for high-risk changes, verify mode for user-visible ones |
 | `wave` | Several tickets at once, quota and model choice, and the close: validate, recap, recommend. Tools: `brief`, `quota-probe`, `wave-status` |
 | `groom` | By hand: clean and rank the backlog and offer what to work on; changes nothing without a yes |
 
 `extras/` holds five more that are not installed by default (`./install.sh --extras`): `babysit-pr`
-with the `pr-wait` watcher for harnesses that cannot watch a PR, `takeover`, `leaving-pr-comments`,
+(how to work a PR with the `pr-wait` watcher, for harnesses that cannot watch one), `takeover`, `leaving-pr-comments`,
 `create-verify` and `correct-mistakes`.
 
 ## UI changes

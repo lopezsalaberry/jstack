@@ -82,9 +82,13 @@ def identity(root: Path) -> dict:
 def commit_files(root: Path, ref: str, files: list[Path], revision: str, push: bool) -> tuple[str, dict]:
     """Add the files to the ticket's evidence ref with plumbing and push it. Returns the commit and each file's path in it."""
     parent = None
-    if git(root, "ls-remote", "origin", ref):
-        git(root, "fetch", "-q", "origin", ref)
-        parent = git(root, "rev-parse", "FETCH_HEAD")
+    try:
+        if git(root, "ls-remote", "origin", ref):
+            git(root, "fetch", "-q", "origin", ref)
+            parent = git(root, "rev-parse", "FETCH_HEAD")
+    except Fail:
+        if push:
+            raise  # a dry run prepares the block without an origin; a real run needs one
     paths = {}
     with tempfile.TemporaryDirectory() as tmp:
         env = {"GIT_INDEX_FILE": str(Path(tmp) / "index"), **identity(root)}

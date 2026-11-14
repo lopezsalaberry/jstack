@@ -12,7 +12,7 @@ SETTINGS = ROOT / "skills/jstack/scripts/jstack-settings"
 DOCTOR = ROOT / "skills/jstack/scripts/doctor"
 PROBE = ROOT / "skills/wave/scripts/quota-probe"
 WAVE = ROOT / "skills/wave/scripts/wave-status"
-PRWAIT = ROOT / "extras/babysit-pr/scripts/pr-wait"
+PRWAIT = ROOT / "skills/ticket/scripts/pr-wait"
 PROOFVALID = ROOT / "skills/ticket/scripts/proof-valid"
 CHECKLIST = ROOT / "skills/ticket/scripts/checklist-init"
 TOKENLINT = ROOT / "skills/ticket/scripts/token-lint"
@@ -125,7 +125,9 @@ def test_quota_probe_rejects_a_malformed_line(tmp_path):
     src = tmp_path / "q.txt"
     src.write_text("alpha only-two-fields\n")
     bad = run([PROBE, "--source", src, "--provider", "alpha"], cwd=tmp_path)
-    assert bad.returncode == 2 and "expected" in bad.stderr
+    assert bad.returncode == 64 and "expected" in bad.stderr, "exit 2 would mean 'unknown, go ahead'"
+    src.write_text("not-a-row\nalpha acct1 0\n")
+    assert run([PROBE, "--source", src, "--provider", "alpha"], cwd=tmp_path).returncode == 64, "the 0% line below a bad one is never reached"
 
 
 def test_a_refusal_marks_the_provider_and_every_later_worker_skips_it(tmp_path):
@@ -162,7 +164,8 @@ def test_until_marks_a_provider_for_as_long_as_its_refusal_lasts(tmp_path):
     expires = float((tmp_path / "marks.txt").read_text().split()[1])
     assert 19 * 86400 < expires - time.time() < 21 * 86400, "about 20 days, not the hour --minutes would give"
     assert run([PROBE, "--provider", "cursor"], cwd=tmp_path, env=marks).returncode == 1
-    for text, why in (("2020-01-01", "already past"), ("tomorrow-ish", "not an ISO")):
+    far = time.strftime("%Y-%m-%d", time.localtime(time.time() + 400 * 86400))            # a mistyped year
+    for text, why in (("2020-01-01", "already past"), (far, "days away"), ("tomorrow-ish", "not an ISO")):
         bad = run([PROBE, "--mark-exhausted", "x", "--until", text], cwd=tmp_path, env=marks)
         assert bad.returncode == 64 and why in bad.stderr, (text, bad.stderr)   # 64, never the 2 that means "unknown"
     both = run([PROBE, "--mark-exhausted", "x", "--minutes", "5", "--until", later], cwd=tmp_path, env=marks)
@@ -170,6 +173,8 @@ def test_until_marks_a_provider_for_as_long_as_its_refusal_lasts(tmp_path):
     epoch = run([PROBE, "--mark-exhausted", "y", "--until", str(int(time.time()) + 7200)], cwd=tmp_path, env=marks)
     assert epoch.returncode == 0, "epoch seconds are accepted too"
     assert run([PROBE, "--mark-exhausted", "z"], cwd=tmp_path, env=marks).stdout.strip().endswith("for 60 min")
+    next_reset = time.strftime("%Y-%m-%d", time.localtime(time.time() + 48 * 86400))      # a reset on the 1st, 48 days out
+    assert run([PROBE, "--mark-exhausted", "w", "--until", next_reset], cwd=tmp_path, env=marks).returncode == 0
 
 
 def test_reviewer_models_defaults_to_auto_and_the_preference_syntax_parses(tmp_path):
@@ -862,9 +867,15 @@ def test_check_passes_a_proven_change_and_names_what_is_missing(tmp_path):
         assert name in lines, (name, out)
     _row(r, "| the button is blue | PASS | 3 | read the code | - |")
     code, lines, out = _check(r)
-    assert code == 1 and "below level 4" in lines["FAIL proof"], "a PASS nobody ran is not a pass"
+    assert code == 1 and "without level 4 or 5" in lines["FAIL proof"], "a PASS nobody ran is not a pass"
     _row(r, "| the button is blue | FAIL | 5 | still grey | after.png |")
-    assert "target(s) FAIL" in _check(r)[1]["FAIL proof"]
+    assert "not PASS" in _check(r)[1]["FAIL proof"]
+    for not_a_pass in ("| it saves the note | unproven (level 1) | 1 | I said so | - |",          # found by an independent review:
+                       "| it saves the note | PASS | 1 to 5 | copied the hint | - |"):             # both of these passed the gate
+        _row(r, not_a_pass)
+        assert _check(r)[0] == 1 and "FAIL proof" in _check(r)[1], not_a_pass
+    _row(r, "| the button is blue | **PASS** | 5 | saw it | after.png |")
+    assert _check(r)[0] == 0, "bold is still a pass"
     _row(r, "| <the thing the ticket asks for> | PASS or FAIL | 1 to 5 | <command> | <file> |")
     assert "no filled row" in _check(r)[1]["FAIL proof"], "the template row is not proof"
     assert run([CHECK, "--base", "main"], cwd=r).stdout.count("proof") == 1, "with one checklist the ticket may be left out"
@@ -882,8 +893,11 @@ def test_check_fails_an_edited_change_an_off_token_color_and_a_branch_that_is_no
     code, lines, out = _check(r)
     assert "the patch changed since the proof" in lines["FAIL proof"], out
     assert "FAIL design" in lines and "is not a design token" in lines["FAIL design"], out
+    git(r, "checkout", "-q", "--detach")
+    assert "detached HEAD" in _check(r)[1]["FAIL branch"]
     git(r, "checkout", "-q", "main")
-    assert "integration branch" in _check(r)[1]["FAIL branch"]
+    code, lines, out = _check(r)
+    assert "integration branch" in lines["FAIL branch"] and "adds nothing over main" in lines["FAIL change"], out
     (r / "other.txt").write_text("moved on\n")
     git(r, "add", "-A")
     git(r, "commit", "-q", "-m", "main moved")
@@ -910,12 +924,17 @@ def test_check_reads_the_pull_request_head_screenshot_review_ci_and_mergeability
     assert code == 0 and all(f"PASS {n}" in lines for n in ("head", "screenshot", "review", "ci", "mergeable")), out
     assert "FAIL head" in check(shown + review, headRefOid="0" * 40)[1], "the PR must be at the head that was checked"
     for nothing in ("Fixes it.", "Screenshots are under `.artifacts/T-1` (not in git).", "![](.artifacts/T-1/after.png)",
+                    "![shot](https://example.com/not-a-picture)",
+                    "![build](https://img.shields.io/badge/build-passing-green.png)",
                     "| [app](https://vercel.com/x) | ![Ready](https://vercel.com/static/status/ready.svg) |"):
         assert "shows no picture" in check(nothing + "\n" + review)[1]["FAIL screenshot"], nothing
     assert 'TODO under "Not shown"' in check(shown.replace("dark mode", "TODO: say what this proof does not cover") + review)[1]["FAIL screenshot"]
     assert "no `Review:` line" in check(shown)[1]["FAIL review"], "a UI change needs someone else's verdict"
     assert "says CHANGES" in check(shown + review.replace("verdict PASS", "verdict CHANGES"))[1]["FAIL review"]
     assert "older patch" in check(shown + review.replace(patch, "f" * 40))[1]["FAIL review"]
+    assert "no `patch <id>`" in check(shown + "Review: verify by me | verdict PASS\n")[1]["FAIL review"], "a verdict tied to nothing"
+    assert "PASS screenshot" in check('<img width="300" src="https://github.com/user-attachments/assets/abc-123">\n**Not shown:** x\n' + review)[1]
+    assert "has not said yet" in check(shown + review, mergeable="UNKNOWN")[1]["FAIL mergeable"]
     assert "failed: ci" in check(shown + review, statusCheckRollup=[{"name": "ci", "status": "COMPLETED", "conclusion": "FAILURE"}])[1]["FAIL ci"]
     assert "still running" in check(shown + review, statusCheckRollup=[{"name": "ci", "status": "IN_PROGRESS", "conclusion": None}])[1]["FAIL ci"]
     assert "SKIP ci" in check(shown + review, statusCheckRollup=[])[1]
@@ -930,6 +949,7 @@ def test_check_asks_nothing_about_screens_of_a_change_with_no_ui_file(tmp_path):
             "headRefOid": _out("git", "-C", r, "rev-parse", "HEAD")}
     code, lines, out = _check(r, "--pr", "7", env=_fake_gh(tmp_path, data))
     assert code == 0 and "SKIP design" in lines and "SKIP screenshot" in lines and "SKIP review" in lines, out
+    assert "high-risk or user-visible" in lines["SKIP review"], "the gate says what it cannot know"
     (r / "AGENTS.md").write_text("# P\n\n## jstack settings\nintegration_branch: main\nverify_mode: always\n")
     git(r, "commit", "-q", "-am", "always")
     _row(r, "| the api answers | PASS | 4 | ran the test | after.txt |")
@@ -964,8 +984,14 @@ def test_brief_writes_a_brief_that_stands_alone_and_will_not_run_without_a_model
 
 def test_brief_adds_the_design_block_when_the_ticket_may_touch_ui(tmp_path):
     r = repo(tmp_path, "# P\n\n## jstack settings\nui_paths: app/**/*.css, **/*.tsx\ndesign_tokens: design/tokens.json\n")
+    for name in ("app/button.css", "web/Home.tsx", "server/api.py", "docs/readme.md"):
+        (r / name).parent.mkdir(exist_ok=True)
+        (r / name).write_text("x\n")
+    git(r, "add", "-A")
+    git(r, "commit", "-q", "-m", "files")
     block = lambda touches: "Design:" in _brief(r, "--touches", touches, "--model", "m", "--effort", "low").stdout
-    assert block("app/button.css") and block("app/") and block("app/**") and block("web/Home.tsx") and block("server/")
+    assert block("app/button.css") and block("app/") and block("app/**") and block("web/") and block("new/Panel.tsx")
+    assert not block("server/"), "a folder with no UI file is not a UI ticket, whatever the glob starts with"
     assert not block("docs/readme.md") and not block("server/api.py, server/db.py")
     text = _brief(r, "--touches", "app/button.css", "--model", "m", "--effort", "low")
     assert "design/tokens.json" in text.stdout and "`before-<state>.png`" in text.stdout and "`publish T-7 --pr <number>`" in text.stdout
@@ -974,3 +1000,35 @@ def test_brief_adds_the_design_block_when_the_ticket_may_touch_ui(tmp_path):
     plain = repo(tmp_path / "plain")
     assert "Design:" not in _brief(plain, "--touches", "app/x.css", "--model", "m", "--effort", "low").stdout, \
         "with `ui_paths` empty the design gate is off"
+
+
+def test_wave_status_shows_no_metric_cell_when_runstate_has_none(tmp_path):
+    r = repo(tmp_path)
+    (r / "RUNSTATE.md").write_text("Status: WAITING probe exits 0\nDone when: tests pass\nNext step: rerun the tests\n")
+    out = run([WAVE, "--repo", r], cwd=tmp_path).stdout
+    assert "?" not in out.replace("ago", "") and "| WAITING probe exits 0 |  | rerun the tests |" in out, out
+
+
+def test_publish_dry_run_needs_no_origin(tmp_path):
+    r = repo(tmp_path)
+    git(r, "checkout", "-q", "-b", "feat")
+    (r / "x.txt").write_text("x\n")
+    git(r, "add", "-A")
+    git(r, "commit", "-q", "-m", "x")
+    shots = r / ".artifacts" / "T-1"
+    shots.mkdir(parents=True)
+    (shots / "after-home.png").write_bytes(b"x")
+    dry = run([PUBLISH, "T-1", "--repo", r, "--dry-run", "--base", "main", "--web-base", WEB], cwd=tmp_path)
+    assert dry.returncode == 0 and "![After: home](" in dry.stdout, (dry.stdout, dry.stderr)
+    real = run([PUBLISH, "T-1", "--repo", r, "--base", "main", "--web-base", WEB], cwd=tmp_path)
+    assert real.returncode == 1 and "failed" in real.stderr, "a real run without an origin says so"
+
+
+def test_token_lint_reads_arbitrary_utility_values(tmp_path):
+    """Found by an independent review: `p-[13px]` in a component passed, and the projects that matter write sizes that way."""
+    r = ui_repo(tmp_path)
+    (r / "app").mkdir(exist_ok=True)
+    (r / "app/Button.tsx").write_text('export const B = () => <button className="p-[13px] md:text-[15px] m-[16px] border-[1px]" />\n')
+    done = lint(r, "--tokens", "design/tokens.json", "--paths", "app/**/*.tsx")
+    assert done.returncode == 1 and "`p-[13px]`" in done.stdout and "`md:text-[15px]`" in done.stdout, (done.stdout, done.stderr)
+    assert "m-[16px]" not in done.stdout and "border-[1px]" not in done.stdout, "a token value and a hairline are fine"

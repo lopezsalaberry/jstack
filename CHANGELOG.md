@@ -36,12 +36,26 @@ short card when every session must know it, a skill for the rest.
 - The repo's `AGENTS.md` copy is the card plus the settings block; `templates/AGENTS.md` no longer carries a version
   marker and the long flow.
 
+### Fixed, from an independent review before release
+A reviewer of another model family ran both versions blind and proved these with commands; each is now a test.
+- `check` passed a row marked "unproven", a level cell that still held the hint "1 to 5", a branch with no change, a
+  detached HEAD, a link that is not a picture file, a `Review:` line with no patch id, and a PR GitHub had not yet
+  called mergeable. All fail now. With no UI file changed it says it cannot tell whether the change needs a review.
+- `proof-valid` called a checklist that records no patch valid when HEAD had no change, and called a proof "landed"
+  when HEAD had moved on to a later, unproven patch.
+- `quota-probe` exited 2 ("unknown, go ahead") on a source line it could not read; it exits 64. `--until` has a 92-day
+  bound again, so a mistyped year cannot hide a provider for good and a reset on the 1st is still accepted.
+- `token-lint` did not look at arbitrary utility sizes such as `p-[13px]`.
+- `brief` added the design block for any folder when a `ui_paths` glob started with `**`; it now reads the repo's files.
+- `wave-status` printed `?: ? -> ?` for a `RUNSTATE.md` without a metric. `publish --dry-run` needed an `origin`.
+- `pr-wait` ships with `ticket`, so a harness with no PR watcher has one in a default install.
+
 ### Removed
 - Settings `models` (say it in `routing`), `review_bots` and `advisory_bots` (options of `pr-wait`), `quota_source`,
   `quota_max_age_minutes`, `iteration_minutes`, `posthoc_queue` and `paid_fallback`. `doctor` names any that a repo still
   sets.
-- `trail`, `template-drift` (the card check in `doctor` replaces it), `pr-evidence-check` (now a line of `check`), the
-  45-day limit of `--until`, and `docs/OPERATING-MODEL.md`.
+- `trail`, `template-drift` (the card check in `doctor` replaces it), `pr-evidence-check` (now a line of `check`) and
+  `docs/OPERATING-MODEL.md`.
 
 ## 0.10.1
 

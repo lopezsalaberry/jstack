@@ -23,7 +23,7 @@ idea directly, change approach). Stop only by its stop rules, with a typed `BLOC
 ## Waiting
 
 Never write your own watcher, polling loop, or `sleep` loop. Use one watcher per PR:
-the harness's PR watcher when it has one (see `jstack`), otherwise `scripts/pr-wait`.
+the harness's PR watcher when it has one (see `jstack`), otherwise `ticket`'s `scripts/pr-wait`.
 Never run both on the same PR. Every watcher on a GitHub account shares one rate limit.
 
 ### With the harness's PR watcher
@@ -45,7 +45,7 @@ someone comments or reviews, or the branch conflicts.
 
 ### With `pr-wait`
 
-Wait with `scripts/pr-wait` from this skill's directory (use its absolute path).
+Wait with `scripts/pr-wait` from the `ticket` skill's directory (use its absolute path).
 
 ```bash
 pr-wait <pr> [--repo owner/name] [--until ready|green|any-change] [--bots a,b] [--advisory-bots c]

@@ -57,7 +57,7 @@ def rows(repo: Path) -> list[dict[str, str]]:
             result.append({"branch": branch, "status": "no RUNSTATE.md", "metric": "", "next": "", "age": ""})
             continue
         v = read(state)
-        metric = f"{v.get('Metric', '?')}: {v.get('Baseline', '?')} -> {v.get('Now', '?')}"
+        metric = f"{v['Metric']}: {v.get('Baseline', '?')} -> {v.get('Now', '?')}" if v.get("Metric") else ""
         result.append({"branch": branch, "status": v.get("Status", "?"), "metric": metric,
                        "next": v.get("Next step", ""), "age": age(state)})
     return result

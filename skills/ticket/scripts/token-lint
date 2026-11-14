@@ -9,7 +9,8 @@ and untracked files), in files that match --paths. A line is a violation when it
 that is not a token value:
 
   color    #rgb #rrggbb #rrggbbaa, rgb()/rgba()/hsl()/hsla()
-  size     a px/rem/em value in a spacing, size, radius or font-size declaration
+  size     a px/rem/em value in a spacing, size, radius or font-size declaration, or in an arbitrary utility
+           class such as `p-[13px]`. A design system with no size tokens has no sizes to check against, so none are
   font     the first family of a font-family declaration
 
 Token-definition files (`tokens.*`, `*.tokens.*`, `design-tokens.*`), test files (`__tests__/`, `*.test.*`, `*.spec.*`)
@@ -40,6 +41,7 @@ SIZE_DECL = re.compile(r"\b((?:margin|padding|gap|row-gap|column-gap|top|right|b
                        r"max-width|min-height|max-height|font-size|line-height|border-radius|border-width|"
                        r"letter-spacing)[\w-]*)\s*:\s*([^;{}]+)", re.I)
 LENGTH = re.compile(r"(?<![\w.#-])(-?\d*\.?\d+)(px|rem|em)\b")
+UTILITY_LENGTH = re.compile(r"(?<![\w-])(?:[a-z-]+:)*-?[a-z][a-z0-9-]*-\[(-?\d*\.?\d+)(px|rem|em)\]")  # p-[13px], md:text-[15px]
 FONT_DECL = re.compile(r"\bfont-family\s*:\s*([^;{}]+)", re.I)
 GENERIC_FONTS = {"inherit", "initial", "unset", "serif", "sans-serif", "monospace", "system-ui", "cursive", "fantasy"}
 
@@ -237,6 +239,10 @@ def main() -> None:
                 lit = f"{float(m.group(1)):g}{m.group(2).lower()}"
                 if float(m.group(1)) != 0 and lit != "1px" and lit not in lengths:
                     report(path, number, m.group(0), "size", f" (in `{decl.group(1)}`)")
+        for m in UTILITY_LENGTH.finditer(text if lengths else ""):
+            lit = f"{float(m.group(1)):g}{m.group(2).lower()}"
+            if float(m.group(1)) != 0 and lit != "1px" and lit not in lengths:
+                report(path, number, m.group(0), "size", " (an arbitrary utility value)")
         for decl in FONT_DECL.finditer(text if fonts else ""):
             family = decl.group(1).split(",")[0].strip().strip("'\"").lower()
             if family and family not in GENERIC_FONTS and not family.startswith("var(") and family not in fonts:

@@ -172,7 +172,7 @@ def test_groom_never_sends_delivered_work_to_canceled():
 def test_the_gate_is_one_command_and_three_things_stay_with_the_agent():
     ticket = read("skills/ticket/SKILL.md")
     assert "`scripts/check <ticket> --pr <number>` must print no `FAIL`." in ticket
-    for mine in ("a high-risk change needs the `review` skill even when `check` skips the review line",
+    for mine in ("a high-risk or user-visible change that touches no UI file needs the `review` skill even when `check` skips the review line",
                  "a red CI job that never ran a step is explained next to the output"):
         assert mine in ticket, mine
     assert "never with `--admin`" in ticket and "Do not hold a green ticket for a batch." in ticket

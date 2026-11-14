@@ -6,8 +6,9 @@
 
 Prints a brief that stands alone: the ticket, the files it may touch, the observable condition that ends it, the
 integration branch from the repo's settings, how to work (the `ticket` skill, the evidence checklist, the `check`
-gate), what to do instead of asking, and the status line to end with. When PATHS overlap the `ui_paths` setting it
-adds the design block: the tokens to read and the before and after pictures to publish.
+gate), what to do instead of asking, and the status line to end with. When a path in PATHS, or a tracked file under
+a folder or glob in PATHS, matches the `ui_paths` setting, it adds the design block: the tokens to read and the before
+and after pictures to publish.
 
 --model and --effort are required because the brief is where the choice is made: a delegate that is not told its
 model inherits the parent's. They go on the last line, on stderr, for the delegate call; the worker's text does
@@ -18,7 +19,6 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
-import re
 import subprocess
 import sys
 from importlib.machinery import SourceFileLoader
@@ -30,21 +30,14 @@ settings = importlib.util.module_from_spec(importlib.util.spec_from_loader("jsta
 _loader.exec_module(settings)
 
 
-def literal_prefix(glob: str) -> str:
-    return re.split(r"[*?]", glob, maxsplit=1)[0]
-
-
-def may_be_ui(touch: str, glob: str) -> bool:
-    """True unless the two clearly cannot name the same file. When unsure the design block is included."""
-    if settings.glob_re(glob).match(touch):
-        return True
-    mine, theirs = literal_prefix(touch), literal_prefix(glob)
-    if theirs and not (mine.startswith(theirs) or theirs.startswith(mine)):
-        return False
-    suffix = glob.rsplit("*", 1)[-1]
-    last = touch.rstrip("/").rsplit("/", 1)[-1]
-    is_file = "." in last and not re.search(r"[*?]", last) and not touch.endswith("/")
-    return not (is_file and suffix.startswith(".") and not touch.endswith(suffix))
+def touches_ui(root: Path, values: dict, touches: list[str]) -> bool:
+    """True when a path the ticket names, or a tracked file under a folder or glob it names, matches `ui_paths`."""
+    tracked = subprocess.run(["git", "-C", str(root), "ls-files"], capture_output=True, text=True).stdout.splitlines()
+    named = list(touches)
+    for touch in touches:
+        folder, pattern = touch.rstrip("/") + "/", settings.glob_re(touch)
+        named += [f for f in tracked if f.startswith(folder) or pattern.match(f)]
+    return bool(settings.ui_files(values, named))
 
 
 def main(argv: list[str]) -> int:
@@ -64,8 +57,7 @@ def main(argv: list[str]) -> int:
     values = settings.resolve(root)
     branch = values["integration_branch"]
     touches = [t.strip() for t in args.touches.split(",") if t.strip()]
-    globs = [g.strip() for g in values["ui_paths"].split(",") if g.strip()]
-    ui = any(may_be_ui(t, g) for t in touches for g in globs)
+    ui = touches_ui(root, values, touches)
     t = args.ticket
     lines = [
         f"Ticket {t}: {args.goal.strip()}",

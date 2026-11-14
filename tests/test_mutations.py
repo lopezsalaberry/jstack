@@ -36,7 +36,7 @@ MUTATIONS = {
         "skills/jstack/scripts/jstack-settings", "        elif key in mine:", "        elif False:",
         "tests/test_tools.py::test_the_operators_own_settings_sit_between_the_repo_and_the_default"),
     "a checklist that records no patch is accepted": (
-        "skills/ticket/scripts/proof-valid", "if recorded in UNANCHORED and now != recorded:", "if False:",
+        "skills/ticket/scripts/proof-valid", "        if recorded in UNANCHORED:", "        if False:",
         "tests/test_tools.py::test_a_checklist_started_before_the_change_is_never_called_valid"),
     "a stamp keeps the old patch id": (
         "skills/ticket/scripts/proof-valid", '("Patch-id", patch)', '("Patch-id", "empty")',
@@ -78,14 +78,14 @@ MUTATIONS = {
         "skills/ticket/scripts/publish", "        if len(files) > args.max_files or large:", "        if False:",
         "tests/test_tools.py::test_publish_refuses_the_folder_a_big_file_and_an_origin_nobody_can_open"),
     "a PASS that nobody ran passes the gate": (
-        "skills/ticket/scripts/check", '        weak = [t for t, result, level in targets if "PASS" in result and not re.search(r"[45]", level)]',
+        "skills/ticket/scripts/check", '        weak = [t for t, result, level in targets if result == "PASS" and level not in ("4", "5")]',
         "        weak = []",
         "tests/test_tools.py::test_check_passes_a_proven_change_and_names_what_is_missing"),
     "a change edited after its proof passes the gate": (
         "skills/ticket/scripts/check", "if valid.returncode != 0 else", "if False else",
         "tests/test_tools.py::test_check_fails_an_edited_change_an_off_token_color_and_a_branch_that_is_not_ready"),
     "work on the integration branch passes the gate": (
-        "skills/ticket/scripts/check", 'say("FAIL" if branch == target else "PASS", "branch",', 'say("PASS", "branch",',
+        "skills/ticket/scripts/check", 'say("FAIL" if branch in (target, "") else "PASS", "branch",', 'say("PASS", "branch",',
         "tests/test_tools.py::test_check_fails_an_edited_change_an_off_token_color_and_a_branch_that_is_not_ready"),
     "a status badge counts as a screenshot": (
         "skills/ticket/scripts/check", "for line in text.splitlines() if not NOT_A_SCREENSHOT.search(line)", "for line in text.splitlines() if True",
@@ -100,6 +100,30 @@ MUTATIONS = {
     "a change with no UI file still needs a screenshot": (
         "skills/ticket/scripts/check", '            if not ui:\n                say("SKIP", "screenshot"', '            if False:\n                say("SKIP", "screenshot"',
         "tests/test_tools.py::test_check_asks_nothing_about_screens_of_a_change_with_no_ui_file"),
+    "an unproven target passes the gate": (
+        "skills/ticket/scripts/check", '        failed = [t for t, result, _ in targets if result != "PASS"]', "        failed = []",
+        "tests/test_tools.py::test_check_passes_a_proven_change_and_names_what_is_missing"),
+    "a verdict tied to no patch counts": (
+        "skills/ticket/scripts/check", "            elif loose:", "            elif False:",
+        "tests/test_tools.py::test_check_reads_the_pull_request_head_screenshot_review_ci_and_mergeability"),
+    "a link that is not a picture counts as a screenshot": (
+        "skills/ticket/scripts/check", 're.compile(rf"\\]\\(\\s*<?{FILE}", re.I),', 're.compile(r"\\]\\(\\s*<?https?://\\S+", re.I),',
+        "tests/test_tools.py::test_check_reads_the_pull_request_head_screenshot_review_ci_and_mergeability"),
+    "a branch with no change passes the gate": (
+        "skills/ticket/scripts/check", 'say("PASS" if changed else "FAIL", "change",', 'say("PASS", "change",',
+        "tests/test_tools.py::test_check_fails_an_edited_change_an_off_token_color_and_a_branch_that_is_not_ready"),
+    "a mark for a mistyped year is accepted": (
+        "skills/wave/scripts/quota-probe", "    if when > now + MAX_UNTIL_DAYS * 86400:", "    if False:",
+        "tests/test_tools.py::test_until_marks_a_provider_for_as_long_as_its_refusal_lasts"),
+    "an unreadable quota file reads as unknown": (
+        "skills/wave/scripts/quota-probe", "            sys.exit(64)  # not 2", "            sys.exit(2)  # not 2",
+        "tests/test_tools.py::test_quota_probe_rejects_a_malformed_line"),
+    "an arbitrary utility size is not looked at": (
+        "skills/ticket/scripts/token-lint", '        for m in UTILITY_LENGTH.finditer(text if lengths else ""):', '        for m in UTILITY_LENGTH.finditer(""):',
+        "tests/test_tools.py::test_token_lint_reads_arbitrary_utility_values"),
+    "a folder with no UI file gets the design block": (
+        "skills/wave/scripts/brief", "        named += [f for f in tracked if f.startswith(folder) or pattern.match(f)]", "        named += tracked",
+        "tests/test_tools.py::test_brief_adds_the_design_block_when_the_ticket_may_touch_ui"),
     "a brief is written without a model": (
         "skills/wave/scripts/brief", 'ap.add_argument(f"--{name}", required=True)', 'ap.add_argument(f"--{name}", default="x")',
         "tests/test_tools.py::test_brief_writes_a_brief_that_stands_alone_and_will_not_run_without_a_model"),
@@ -107,7 +131,7 @@ MUTATIONS = {
         "skills/wave/scripts/brief", "    if ui:\n        lines.append(", "    if False:\n        lines.append(",
         "tests/test_tools.py::test_brief_adds_the_design_block_when_the_ticket_may_touch_ui"),
     "a bot that never reviews is still waited for": (
-        "extras/babysit-pr/scripts/pr-wait", "if green and (reviewed or not GATING_BOTS):", "if green and reviewed:",
+        "skills/ticket/scripts/pr-wait", "if green and (reviewed or not GATING_BOTS):", "if green and reviewed:",
         "tests/test_tools.py::test_pr_wait_ready_does_not_wait_for_bots_that_are_not_configured"),
 }
 

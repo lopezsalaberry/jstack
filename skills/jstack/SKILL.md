@@ -49,8 +49,8 @@ Skills name an action; use your harness's tool for it, or the fallback, which ne
 | Check that a started agent answered | the result of the foreground `Agent` call | `t3_thread_wait` with a 2-minute timeout, then `t3_thread_read` | wait for it with a 2-minute timeout | Read the child's output after 2 minutes |
 | List the models and providers you can start | the `/model` menu | `orchestrator_capabilities` | the model picker | Try `reviewer_models` in order: a refusal is the answer |
 
-`pr-wait` ships with the `babysit-pr` skill in `extras/` (`./install.sh --extras`). Never use two watchers on one
-PR. A delegated child never watches a PR its parent owns, and every delegate is told its model and effort.
+`pr-wait` is in the `ticket` skill's `scripts/` folder; `babysit-pr` in `extras/` says how to work a PR with it. Never
+use two watchers on one PR. A delegated child never watches a PR its parent owns, and every delegate is told its model and effort.
 
 ## Status words
 

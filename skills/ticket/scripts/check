@@ -34,7 +34,6 @@ import argparse
 import importlib.util
 import json
 import re
-import shlex
 import subprocess
 import sys
 from importlib.machinery import SourceFileLoader
@@ -158,13 +157,14 @@ def main(argv: list[str]) -> int:
     elif not ui:
         say("SKIP", "design", "no changed file matches `ui_paths`")
     else:
-        command = (shlex.split(values["design_check"]) if values["design_check"].strip() else
-                   [sys.executable, str(HERE / "token-lint"), "--tokens", values["design_tokens"], "--paths", values["ui_paths"], "--base", base])
+        own = values["design_check"].strip()
         try:
-            done = run(command, root)
-            ok, detail = done.returncode == 0, " | ".join((done.stdout + done.stderr).strip().splitlines()[:3])
+            # The repo's own command is a shell line (`cd frontend && npx vitest run ...`), as the setting says: run from the root.
+            done = (subprocess.run(own, shell=True, cwd=root, capture_output=True, text=True) if own else
+                    run([sys.executable, str(HERE / "token-lint"), "--tokens", values["design_tokens"], "--paths", values["ui_paths"], "--base", base], root))
+            ok, detail = done.returncode == 0, " | ".join((done.stdout + done.stderr).strip().splitlines()[-3:])
         except OSError as error:
-            ok, detail = False, f"cannot run {command[0]}: {error}"
+            ok, detail = False, f"cannot run the design check: {error}"
         say("PASS" if ok else "FAIL", "design", f"{len(ui)} UI file(s)" if ok else detail)
 
     if not args.pr:

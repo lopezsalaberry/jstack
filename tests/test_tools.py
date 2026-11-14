@@ -1098,3 +1098,19 @@ def test_a_fork_whose_origin_is_upstream_publishes_and_branches_from_its_own_rem
     plain = repo(tmp_path / "b", "# P\n\n## jstack settings\nintegration_branch: open-training\n")
     text = _brief(plain, "--touches", "server/api.py", "--model", "m", "--effort", "low", "--remote", "private").stdout
     assert "branch from private/open-training" in text and "`check T-7 --pr <number> --base private/open-training`" in text
+
+
+def test_check_runs_a_repos_own_design_command_as_the_shell_line_it_is(tmp_path):
+    """A real repo sets `design_check: cd frontend && npx vitest run ...`; split into words it could not even start."""
+    r = _proven_ticket(tmp_path)
+    (r / "AGENTS.md").write_text("# P\n\n## jstack settings\nintegration_branch: main\nui_paths: app/**/*.css\n"
+                                 "design_check: cd app && test -f button.css && echo design ok\n")
+    git(r, "commit", "-q", "-am", "own design check")
+    _row(r, "| the button is blue | PASS | 4 | ran the page | after.txt | |")
+    code, lines, out = _check(r)
+    assert code == 0 and "PASS design" in lines, out
+    (r / "AGENTS.md").write_text("# P\n\n## jstack settings\nintegration_branch: main\nui_paths: app/**/*.css\n"
+                                 "design_check: cd app && test -f missing.css\n")
+    git(r, "commit", "-q", "-am", "failing design check")
+    _row(r, "| the button is blue | PASS | 4 | ran the page | after.txt | |")
+    assert "FAIL design" in _check(r)[1]

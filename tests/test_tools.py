@@ -1032,3 +1032,48 @@ def test_token_lint_reads_arbitrary_utility_values(tmp_path):
     done = lint(r, "--tokens", "design/tokens.json", "--paths", "app/**/*.tsx")
     assert done.returncode == 1 and "`p-[13px]`" in done.stdout and "`md:text-[15px]`" in done.stdout, (done.stdout, done.stderr)
     assert "m-[16px]" not in done.stdout and "border-[1px]" not in done.stdout, "a token value and a hairline are fine"
+
+
+# --- the surface a ticket must be proven on ---------------------------------------------------
+
+def test_a_ticket_that_names_a_surface_is_not_done_until_it_is_proven_there(tmp_path):
+    """2026-11-14, first real pair: the ticket said "on iPhone at 402 pt", both workers proved it in Chromium at that
+    width, wrote "not verified on a real iPhone" and passed their gates, so the check went to the operator."""
+    r = repo(tmp_path, "# P\n\n## jstack settings\nintegration_branch: main\n")
+    git(r, "checkout", "-q", "-b", "feat")
+    assert run([CHECKLIST, "T-1", "--base", "main", "--surface", "ios-safari"], cwd=r).returncode == 0
+    text = (r / ".artifacts/T-1/checklist.md").read_text()
+    assert "Required surface: ios-safari" in text and "| Surface |" in text
+    (r / "x.py").write_text("x = 1\n")
+    git(r, "add", "-A")
+    git(r, "commit", "-q", "-m", "change")
+    _row(r, "| Next shows the field | PASS | 5 | saw it | after.png | chromium at 402 pt |")
+    code, lines, out = _check(r)
+    assert code == 1 and "must be proven on ios-safari" in lines["FAIL surface"] and "stand-in" in lines["FAIL surface"], out
+    _row(r, "| Next shows the field | PASS | 4 | ran the unit test | after.txt | ios-safari |")
+    assert "FAIL surface" in _check(r)[1], "a level 4 row is a test, not the thing running on that surface"
+    _row(r, "| Next shows the field | PASS | 5 | saw it in the simulator | after.png | iOS-Safari |")
+    code, lines, out = _check(r)
+    assert code == 0 and "1 target(s) proven on ios-safari" in lines["PASS surface"], out
+    other = run([CHECK, "T-1", "--base", "main", "--surface", "android-chrome"], cwd=r)
+    assert other.returncode == 1 and "must be proven on android-chrome" in other.stdout, "whoever validates can name the surface"
+
+
+def test_no_surface_line_appears_when_the_ticket_names_none(tmp_path):
+    r = _proven_ticket(tmp_path)
+    assert "Required surface: none" in (r / ".artifacts/T-1/checklist.md").read_text()
+    _row(r, "| the button is blue | PASS | 4 | ran the page | after.txt | |")
+    code, lines, out = _check(r)
+    assert code == 0 and not any("surface" in name for name in lines), out
+    _row(r, "| the button is blue | PASS | 4 | ran the page | after.txt |")          # a checklist from before the column
+    assert _check(r)[0] == 0
+
+
+def test_brief_asks_for_proof_on_the_surface_the_ticket_names(tmp_path):
+    r = repo(tmp_path, "# P\n")
+    done = _brief(r, "--touches", "server/api.py", "--model", "m", "--effort", "low", "--surface", "ios-safari")
+    for needed in ("`checklist-init T-7 --surface ios-safari`", "must be proven on `ios-safari`", "stand-in and does not pass",
+                   "report BLOCKED(env)", "do not switch to another surface quietly"):
+        assert needed in done.stdout, needed
+    plain = _brief(r, "--touches", "server/api.py", "--model", "m", "--effort", "low")
+    assert "Surface:" not in plain.stdout and "`checklist-init T-7`" in plain.stdout

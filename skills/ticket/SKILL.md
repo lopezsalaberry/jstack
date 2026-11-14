@@ -26,8 +26,6 @@ deletion or anything outside the repo. A worker started by `wave` is in full sen
    still the old one. If the design system lacks something the ticket needs, stop with `BLOCKED(decision)` naming
    the missing piece. Extending the design system is its own ticket and goes first.
 
-Worktrees do not isolate ports or shared databases: confirm a port answers your process before you trust it.
-
 ## 2. Change
 
 The smallest change that fixes the case that happened, not every case that could. For a bug, reproduce the failure
@@ -37,8 +35,7 @@ has a cheap way to test it.
 ## 3. Prove
 
 Proof is something you observed in this session on the real thing: the running app, the actual value, the delivered
-artifact. A file's date, a cached screenshot or another agent's word is not proof. When a check fails, suspect the
-way you looked before you suspect the system. Say how far each claim got:
+artifact. A file's date, a cached screenshot or another agent's word is not proof. Say how far each claim got:
 
 1. You said so. 2. You pointed at the line. 3. You walked the failing case through the code.
 4. **You ran it**: a script or test that calls the real code. 5. **You reproduced it** in the running, delivered artifact.
@@ -47,22 +44,25 @@ Only 4 and 5 are `PASS`. Below that write "unproven (level N)".
 
 - Run what the repo's CI runs. Open and drive the app with the repo's `verify-<app>` skill.
 - For UI and runtime behavior, run the app and look. Green tests with mocks do not show that it works for a user.
-- Before anything is delivered (a build, a package, a deploy), prove it on the artifact being delivered.
 - A test earns its place if it fails when you break the behavior and still passes when you change only the
   internals. Prefer no new test to a bad one. Never change a test to match a wrong implementation.
 - UI: capture `after-<state>.png` for each `before-`, at the sizes the app supports. Look at every capture: nothing
   cut off, nothing truncated. Compare with the design source and list each mismatch. A mismatch you cannot resolve
   is `BLOCKED(decision)` with the capture beside the design.
 
-Fill the checklist: one row per target with `PASS` or `FAIL`, the level, what you saw and the file. A target you
+**Prove it where it has to work.** When the ticket names a device, a browser or the packaged app, that is the
+surface: `checklist-init <ticket> --surface <name>`, reach it as the repo's `verify-<app>` skill says, and give it a
+row at level 5. Proof elsewhere is a stand-in: it does not pass. Cannot reach it: `BLOCKED(env)` with what you
+tried, never a quiet switch to another surface.
+
+Fill the checklist: one row per target with `PASS` or `FAIL`, the level, what you saw, the file and the surface. A target you
 could not exercise is `FAIL`. Never weaken a target to pass it. Save the passing output of a bug fix as `after.txt`.
 When the proof is final: `scripts/proof-valid --stamp .artifacts/<ticket>/checklist.md`.
 
 ## 4. Pull request
 
 Rebase onto the integration branch, check that the branch has no PR yet, and open a real PR (not a draft, so review
-bots run). The title follows the repo's convention and says why it matters: "cut websocket frames 70% with gzip",
-not "negotiate permessage-deflate". The description:
+bots run). The title follows the repo's convention and says why it matters, not what was edited. The description:
 
 ```
 <the problem as the user met it, then the fix: two or three sentences, no inventory of edits>
@@ -78,10 +78,10 @@ not "negotiate permessage-deflate". The description:
 ```
 
 `scripts/publish <ticket> --pr <number> --not-shown "<what the proof does not cover>"` writes the Evidence section:
-a table with Before (the base commit) beside After (this head), one row per state, from the `before-` and `after-`
-files. A path under `.artifacts/` shows the reader nothing; that folder is not in git. Show the same before and after
-in your own messages while you work. The `Review:` line comes from the `review` skill; leave it out when no review
-ran. Read the title and description for secrets before you post.
+a Before / After table, one row per state, from the `before-` and `after-` files. A path under `.artifacts/` shows
+the reader nothing. Show the same before and after
+in your own messages while you work. The `Review:` line comes from `review`; leave it out when none ran. Read the
+title and description for secrets before you post.
 
 ## 5. Until it is green
 
@@ -118,7 +118,7 @@ skill even when `check` skips the review line; a red CI job that never ran a ste
 to make a line pass.
 
 Merge with the method the repo uses (look at recent merged PRs), through branch protection, never with `--admin`.
-Do not hold a green ticket for a batch. With a merge queue, stay until GitHub says merged. If the operator asked to
+Do not hold a green ticket for a batch. If the operator asked to
 stop before merging, or the repo has one integrator, leave the PR open and green and report `READY_FOR_INTEGRATOR`
 with the PR and its head. After the merge remove the worktree and the branch (`git branch -D`; `-d` refuses after a
 squash). A user-visible ticket goes to review in the tracker, not to done, until the operator accepts it.
@@ -137,6 +137,8 @@ operator, and what you did not verify. Show the before and after pictures in the
 
 Watched: ask with the harness's question tool (see `jstack`), so the thread shows it is waiting. Full send: ask
 only when you cannot continue alone (the stop reasons in step 5), with the PR link, what blocks you and the options,
-your recommendation first. Decide everything reversible yourself and list it in the report. No question tool, or no
+your recommendation first. Decide everything reversible yourself and list it in the report. A fact a run can settle (behavior, layout,
+timing) is not the operator's to check: hand it over only with why your tools could not reach it and the one thing
+to try. No question tool, or no
 answer: leave the PR open and unmerged and start your final message with the question. A worker started by `wave`
 never asks: it reports `BLOCKED(decision)` with the question, the options and its recommendation.

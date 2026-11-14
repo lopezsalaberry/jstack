@@ -61,7 +61,7 @@ Verify:
 Do not edit the repo, commit, push, comment or start other agents.
 Repo: <path> Base: <sha> Head: <sha> Intent: <intent> Acceptance criteria: <list>
 Use this change the way a user would, on the delivered artifact (the project's verify-<app> skill if it has one),
-base against head. For each criterion give the steps and what you saw. If it touches the UI, compare the screens
+base against head, on this surface: <the one the ticket names, or the repo's main one>. For each criterion give the steps and what you saw. If it touches the UI, compare the screens
 with the design source and list every mismatch.
 Reply: VERDICT: PASS, PASS+NOTES or FAIL, then one line per criterion. What you could not run is UNPROVEN, never PASS.
 ```
@@ -72,7 +72,8 @@ Act on each finding as it arrives; do not edit the checkout while the reviewer i
 finding's command yourself. It reproduces and breaks the intent: smallest fix, and the reproduction stays as a
 test. It does not reproduce: drop it and say what you ran. `UNPROVEN`: read the code path, fix only what you can
 see fail, and list the rest in the PR under "Not in this change"; it never blocks by itself. `FAIL` blocks; notes
-under `PASS+NOTES` are follow-ups. Do not agree in order to finish. If a finding stays disputed, show both sides in
+under `PASS+NOTES` are follow-ups. When the ticket names a surface, the verifier's run there is the level 5 row of
+the checklist. Do not agree in order to finish. If a finding stays disputed, show both sides in
 three lines and report `BLOCKED(decision)`.
 
 Checks must be green before and after. Then write the verdict in the PR, under "Who did the work":

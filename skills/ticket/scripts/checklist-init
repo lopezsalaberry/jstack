@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """checklist-init: start a ticket's evidence checklist with the boring parts already filled in.
 
-  checklist-init TICKET [--dir .artifacts] [--base REF] [--env TEXT] [--force]
+  checklist-init TICKET [--surface NAME] [--dir .artifacts] [--base REF] [--env TEXT] [--force]
 
 Creates <dir>/<TICKET>/checklist.md with the current revision, the patch id (so `proof-valid` can later
 say whether the proof still describes the patch that will land; `empty` when the change does not exist yet, in
 which case `proof-valid --stamp` fills it in once the proof is final), the proof levels from the `ticket` skill, and an
 empty table with one row to copy per target. Also keeps the artifacts folder out of commits through
 .git/info/exclude (local, never committed). Refuses to overwrite an existing checklist without --force.
+--surface NAME records where the ticket must be proven (a device, a browser, the packaged app, as the repo's verify
+skill names it): `check` then wants a PASS at level 5 whose Surface cell is NAME. A proof somewhere else is a stand-in.
 Exit 0 created, 1 already exists, 2 not in a git repo or no base branch.
 """
 from __future__ import annotations
@@ -24,14 +26,15 @@ TEMPLATE = """# Evidence: {ticket}
 Revision: {revision}
 Patch-id: {patch}
 Environment: {env}
+Required surface: {surface}
 
 Levels (see `ticket`): 1 you said so, 2 you pointed at the line, 3 you walked the failing case,
 4 you ran it, 5 you reproduced it in the delivered artifact. A target is PASS only at level 4 or 5.
 A target you could not exercise is FAIL, never skipped.
 
-| Target | Result | Level | What I saw | File |
-|---|---|---|---|---|
-| <the thing the ticket asks for> | PASS or FAIL | 1 to 5 | <command, output, behavior> | <screenshot or output file> |
+| Target | Result | Level | What I saw | File | Surface |
+|---|---|---|---|---|---|
+| <the thing the ticket asks for> | PASS or FAIL | 1 to 5 | <command, output, behavior> | <screenshot or output file> | <where it ran> |
 
 For a bug fix keep `before.txt` (the failing output before the fix) and `after.txt` (the passing
 output after it), both verbatim.
@@ -41,6 +44,7 @@ output after it), both verbatim.
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("ticket")
+    ap.add_argument("--surface", default="none")
     ap.add_argument("--dir", default=".artifacts")
     ap.add_argument("--base")
     ap.add_argument("--env", default="<where it ran: machine, browser, simulator, command>")
@@ -58,7 +62,8 @@ def main() -> None:
     fields = dict(line.split(": ", 1) for line in printed.stdout.splitlines() if ": " in line)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(TEMPLATE.format(ticket=args.ticket, revision=fields.get("Revision", "?"),
-                                      patch=fields.get("Patch-id", "?"), env=args.env))
+                                      patch=fields.get("Patch-id", "?"), env=args.env,
+                                      surface=args.surface.strip() or "none"))
     exclude = subprocess.run(["git", "rev-parse", "--git-path", "info/exclude"], capture_output=True, text=True)
     if exclude.returncode == 0:
         path = Path(exclude.stdout.strip())

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """check: the merge gate as one command. Run it before you merge or hand a ticket over, and paste what it prints.
 
-  check [TICKET] [--pr N] [--repo PATH] [--base REF]
+  check [TICKET] [--pr N] [--surface NAME] [--repo PATH] [--base REF]
 
 One line per rule: PASS, FAIL or SKIP (the rule does not apply, and why). Exit 0 when nothing fails, 1 otherwise,
 2 on a usage error. Whoever validates the ticket later runs the same command on the same head.
@@ -13,6 +13,8 @@ Always:
   up to date   the branch contains the tip of BASE (default origin/<integration_branch>, fetched first)
   proof        .artifacts/<ticket>/checklist.md records this patch (`proof-valid`), has a row per target,
                and every row is PASS at level 4 or 5 ("unproven" and FAIL both fail)
+  surface      when the ticket must be proven somewhere (the checklist's `Required surface:` line, or --surface from
+               whoever validates), one row is PASS at level 5 with that Surface. Proof elsewhere is a stand-in
   design       a change to `ui_paths` files passes `design_check`, or the shipped token-lint when it is empty
 With --pr N (needs `gh`):
   head         the PR's head is this HEAD
@@ -65,8 +67,8 @@ def pictures(text: str) -> list[str]:
             for pattern in PICTURE for m in pattern.finditer(line)]
 
 
-def rows(checklist: str) -> list[tuple[str, str, str]]:
-    """(target, result, level) of every filled row of the evidence table."""
+def rows(checklist: str) -> list[tuple[str, str, str, str]]:
+    """(target, result, level, surface) of every filled row of the evidence table."""
     found = []
     for line in checklist.splitlines():
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
@@ -74,7 +76,8 @@ def rows(checklist: str) -> list[tuple[str, str, str]]:
             continue
         if cells[0] == "Target" or cells[0].startswith("<"):
             continue
-        found.append((cells[0], re.sub(r"[*`\s]", "", cells[1]).upper(), cells[2].strip("*` ")))
+        found.append((cells[0], re.sub(r"[*`\s]", "", cells[1]).upper(), cells[2].strip("*` "),
+                      cells[5].strip("*` ").lower() if len(cells) > 5 else ""))
     return found
 
 
@@ -93,6 +96,7 @@ def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("ticket", nargs="?")
     ap.add_argument("--pr")
+    ap.add_argument("--surface")
     ap.add_argument("--repo", type=Path, default=Path.cwd())
     ap.add_argument("--base")
     args = ap.parse_args(argv)
@@ -131,14 +135,22 @@ def main(argv: list[str]) -> int:
     else:
         valid = run([sys.executable, str(HERE / "proof-valid"), "--checklist", str(checklist), "--base", base], root)
         targets = rows(checklist.read_text())
-        failed = [t for t, result, _ in targets if result != "PASS"]
-        weak = [t for t, result, level in targets if result == "PASS" and level not in ("4", "5")]
+        failed = [t for t, result, *_ in targets if result != "PASS"]
+        weak = [t for t, result, level, _ in targets if result == "PASS" and level not in ("4", "5")]
         problem = (("the patch changed since the proof was recorded: prove it again, then `proof-valid --stamp`" if valid.returncode == 1 else
                     "the checklist records no patch: run `proof-valid --stamp` once the proof is final") if valid.returncode != 0 else
                    "the checklist has no filled row: one row per thing the ticket asks for" if not targets else
                    f"{len(failed)} target(s) not PASS (FAIL or unproven), for example: {failed[0]}" if failed else
                    f"{len(weak)} PASS without level 4 or 5 (not run), for example: {weak[0]}" if weak else "")
         say("FAIL" if problem else "PASS", "proof", problem or f"{len(targets)} target(s), {checklist.relative_to(root)}")
+        named = re.search(r"(?m)^Required surface:[ \t]*(.*)$", checklist.read_text())
+        surface = (args.surface or (named.group(1) if named else "")).strip()
+        if surface.lower() not in ("", "none", "-"):
+            there = [t for t, result, level, where in targets if result == "PASS" and level == "5" and where == surface.lower()]
+            say("PASS" if there else "FAIL", "surface",
+                f"{len(there)} target(s) proven on {surface}" if there else
+                f"this ticket must be proven on {surface} and no row is PASS at level 5 with that Surface. A proof somewhere "
+                "else is a stand-in: reach the surface, or report BLOCKED(env) naming what failed")
 
     ui = settings.ui_files(values, changed)
     if not values["ui_paths"].strip():

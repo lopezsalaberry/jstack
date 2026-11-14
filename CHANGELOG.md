@@ -36,6 +36,15 @@ short card when every session must know it, a skill for the rest.
 - The repo's `AGENTS.md` copy is the card plus the settings block; `templates/AGENTS.md` no longer carries a version
   marker and the long flow.
 
+### Added after the first real tickets
+- A ticket that names where it must work is proven there. `checklist-init --surface NAME` records it, the evidence
+  table has a Surface column, `brief --surface NAME` asks the worker for it, and `check` fails unless a row is PASS at
+  level 5 on that surface (`check --surface NAME` for whoever validates). A proof somewhere else is a stand-in and does
+  not pass; a surface that cannot be reached is `BLOCKED(env)`, never a quiet switch. Found on the first real pair: the
+  ticket said "on iPhone at 402 pt", both workers proved it in Chromium at that width, wrote "not verified on a real
+  iPhone", passed their gates, and the check went to the operator.
+- `ticket` says what to do in a repo with no pull requests, and that a fact a run can settle is not the operator's to check.
+
 ### Fixed, from an independent review before release
 A reviewer of another model family ran both versions blind and proved these with commands; each is now a test.
 - `check` passed a row marked "unproven", a level cell that still held the hint "1 to 5", a branch with no change, a

@@ -27,7 +27,8 @@ pick new work.
    operator's suggestions in `routing`; depart from a suggestion only with a reason you write down. Quota says
    which providers are available, never which model suits the work: do not move work around to even out usage.
    Effort starts from your session's level: one step up for the hardest work, one or two down for routine edits.
-3. **Brief.** `scripts/brief <ticket> --goal … --done-when … --touches … --model … --effort …` prints the brief.
+3. **Brief.** `scripts/brief <ticket> --goal … --done-when … --touches … --model … --effort …` prints the brief
+   (`--surface <name>` when the ticket names a device, a browser or the packaged app).
    Start one background worker with it through the harness's delegate action, on that model and effort. A
    delegate that is not told its model inherits yours. `max_parallel` caps how many run; otherwise quota does.
 4. **A refusal is data.** If the start fails for quota, rate limit, authentication or availability, or shows
@@ -53,7 +54,8 @@ Yours to do, never a worker's.
 1. **Account for everyone.** Each worker you launched is done, replaced or absorbed into another. One that never
    reported is a finding, not an absence.
 2. **Validate.** A report is not evidence. For each `READY_FOR_INTEGRATOR`, in its worktree at the PR's head, run
-   `ticket`'s `scripts/check <ticket> --pr <number>` yourself and rerun the check that `Done when:` names. The diff
+   `ticket`'s `scripts/check <ticket> --pr <number>` yourself (add `--surface <name>` when the ticket names where it
+   must work) and rerun the check that `Done when:` names. The diff
    stays inside `Touches:`; list every file outside. A criterion the worker rewrote is the operator's decision,
    never met. A high-risk or user-visible change with no `Review:` line for this patch gets `review`, run by you.
    For `INTEGRATED`, confirm the merge commit is on the integration branch. Write down what nobody verified.

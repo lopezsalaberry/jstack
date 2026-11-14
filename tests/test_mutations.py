@@ -124,6 +124,15 @@ MUTATIONS = {
     "a folder with no UI file gets the design block": (
         "skills/wave/scripts/brief", "        named += [f for f in tracked if f.startswith(folder) or pattern.match(f)]", "        named += tracked",
         "tests/test_tools.py::test_brief_adds_the_design_block_when_the_ticket_may_touch_ui"),
+    "proof on a stand-in passes for the surface": (
+        "skills/ticket/scripts/check", 'if result == "PASS" and level == "5" and where == surface.lower()]', 'if result == "PASS"]',
+        "tests/test_tools.py::test_a_ticket_that_names_a_surface_is_not_done_until_it_is_proven_there"),
+    "the required surface is never checked": (
+        "skills/ticket/scripts/check", '        if surface.lower() not in ("", "none", "-"):', "        if False:",
+        "tests/test_tools.py::test_a_ticket_that_names_a_surface_is_not_done_until_it_is_proven_there"),
+    "a brief drops the surface": (
+        "skills/wave/scripts/brief", "    if args.surface.strip():\n        lines.append(", "    if False:\n        lines.append(",
+        "tests/test_tools.py::test_brief_asks_for_proof_on_the_surface_the_ticket_names"),
     "a brief is written without a model": (
         "skills/wave/scripts/brief", 'ap.add_argument(f"--{name}", required=True)', 'ap.add_argument(f"--{name}", default="x")',
         "tests/test_tools.py::test_brief_writes_a_brief_that_stands_alone_and_will_not_run_without_a_model"),

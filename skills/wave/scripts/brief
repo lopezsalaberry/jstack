@@ -2,7 +2,7 @@
 """brief: write the brief of one worker, so that nothing a worker needs depends on the orchestrator remembering it.
 
   brief TICKET --goal TEXT --done-when TEXT --touches PATHS --model MODEL --effort LEVEL
-        [--stop-before-merge] [--note TEXT] [--repo PATH]
+        [--surface NAME] [--stop-before-merge] [--note TEXT] [--repo PATH]
 
 Prints a brief that stands alone: the ticket, the files it may touch, the observable condition that ends it, the
 integration branch from the repo's settings, how to work (the `ticket` skill, the evidence checklist, the `check`
@@ -12,7 +12,8 @@ and after pictures to publish.
 
 --model and --effort are required because the brief is where the choice is made: a delegate that is not told its
 model inherits the parent's. They go on the last line, on stderr, for the delegate call; the worker's text does
-not need them. --stop-before-merge is for a repo whose contract has a single integrator.
+not need them. --stop-before-merge is for a repo whose contract has a single integrator. --surface NAME is for a
+ticket that names where it must work (a device, a browser, the packaged app): the brief then asks for proof there.
 Exit 0, or 2 on a usage error (a missing field is one: a ticket without `--done-when` is not ready to launch).
 """
 from __future__ import annotations
@@ -45,6 +46,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument("ticket")
     for name in ("goal", "done-when", "touches", "model", "effort"):
         ap.add_argument(f"--{name}", required=True)
+    ap.add_argument("--surface", default="")
     ap.add_argument("--stop-before-merge", action="store_true")
     ap.add_argument("--note", default="")
     ap.add_argument("--repo", type=Path, default=Path.cwd())
@@ -59,6 +61,7 @@ def main(argv: list[str]) -> int:
     touches = [t.strip() for t in args.touches.split(",") if t.strip()]
     ui = touches_ui(root, values, touches)
     t = args.ticket
+    surface = f" --surface {args.surface.strip()}" if args.surface.strip() else ""
     lines = [
         f"Ticket {t}: {args.goal.strip()}",
         f"Repo: {root}. Integration branch: {branch}.",
@@ -68,7 +71,7 @@ def main(argv: list[str]) -> int:
         "How to work:",
         f"- Follow the `ticket` skill end to end, in your own worktree and branch from origin/{branch}.",
         "- The commands named below (`checklist-init`, `check`, `publish`) are in that skill's `scripts/` folder.",
-        f"- Start the evidence before the change: `checklist-init {t}`.",
+        f"- Start the evidence before the change: `checklist-init {t}{surface}`.",
         f"- Before you finish, run `check {t} --pr <number>` and paste what it prints in the PR. Every line must be PASS or SKIP.",
         ("- Do not merge. Leave the PR open and green and report READY_FOR_INTEGRATOR: this repo has one integrator."
          if args.stop_before_merge else
@@ -84,6 +87,11 @@ def main(argv: list[str]) -> int:
             "project's components before the first edit and use only their tokens and components. If the design system lacks "
             "what the ticket needs, report BLOCKED(decision) naming the missing piece; do not improvise it in code. Capture "
             f"`before-<state>.png` and `after-<state>.png` for each screen that changes and run `publish {t} --pr <number>`.")
+    if args.surface.strip():
+        lines.append(
+            f"- Surface: this ticket must be proven on `{args.surface.strip()}` (the repo's verify skill says how to reach it). A proof "
+            "somewhere else is a stand-in and does not pass. If you cannot reach it, report BLOCKED(env) with what you tried and "
+            "what failed; do not switch to another surface quietly.")
     if args.note.strip():
         lines.append(f"- {args.note.strip()}")
     lines += ["",

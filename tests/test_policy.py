@@ -186,3 +186,16 @@ def test_the_notice_credits_what_the_new_skills_are_made_of():
     for name in ("full-send", "ticket-start", "prove-it", "evidence", "iterate", "cross-review", "fanout", "quota-gate", "wrap-up",
                  "pingdotgg/t3code", "figure-it-out"):
         assert name in notice, name
+
+
+def test_a_ticket_is_proven_where_it_has_to_work_and_the_operator_is_not_the_test_device():
+    """What a run can settle is not handed to the operator; a proof on another surface is a stand-in."""
+    ticket = read("skills/ticket/SKILL.md")
+    for needle in ("**Prove it where it has to work.**", "`checklist-init <ticket> --surface <name>`", "give it a row at level 5",
+                   "Proof elsewhere is a stand-in: it does not pass.", "never a quiet switch to another surface",
+                   "A fact a run can settle (behavior, layout, timing) is not the operator's to check",
+                   "only with why your tools could not reach it and the one thing to try"):
+        assert needle in ticket, needle
+    assert "on this surface: <the one the ticket names, or the repo's main one>" in read("skills/review/SKILL.md")
+    assert "the verifier's run there is the level 5 row of the checklist" in read("skills/review/SKILL.md")
+    assert "add `--surface <name>` when the ticket names where it must work" in read("skills/wave/SKILL.md")

@@ -67,7 +67,6 @@ bots run). The title follows the repo's convention and says why it matters, not 
 ```
 <the problem as the user met it, then the fix: two or three sentences, no inventory of edits>
 
-## Evidence
 ## Tests
 <what ran, with counts, and what `check` printed>
 ## Not in this change
@@ -77,7 +76,7 @@ bots run). The title follows the repo's convention and says why it matters, not 
 - Review: <break|verify> by <model> | independence <L1|L2|L3> | verdict <...> | patch <id>
 ```
 
-`scripts/publish <ticket> --pr <number> --not-shown "<what the proof does not cover>"` writes the Evidence section:
+`scripts/publish <ticket> --pr <number> --not-shown "<what the proof does not cover>"` adds the `## Evidence` section (do not write that heading yourself):
 a Before / After table, one row per state, from the `before-` and `after-` files. A path under `.artifacts/` shows
 the reader nothing. Show the same before and after
 in your own messages while you work. The `Review:` line comes from `review`; leave it out when none ran. Read the

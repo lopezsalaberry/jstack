@@ -176,6 +176,9 @@ def test_the_gate_is_one_command_and_three_things_stay_with_the_agent():
                  "a red CI job that never ran a step is explained next to the output"):
         assert mine in ticket, mine
     assert "never with `--admin`" in ticket and "Do not hold a green ticket for a batch." in ticket
+    # 2026-11-14, first runs with real agents: in a repo with no GitHub remote two of three did the work and did not know how to end
+    assert "**No pull requests here**" in ticket and "run `scripts/check <ticket>` without `--pr`" in ticket
+    assert "Land on the integration branch only if the repo's contract lets you" in ticket
 
 
 def test_the_notice_credits_what_the_new_skills_are_made_of():

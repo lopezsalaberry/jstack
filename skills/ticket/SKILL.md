@@ -123,6 +123,10 @@ stop before merging, or the repo has one integrator, leave the PR open and green
 with the PR and its head. After the merge remove the worktree and the branch (`git branch -D`; `-d` refuses after a
 squash). A user-visible ticket goes to review in the tracker, not to done, until the operator accepts it.
 
+**No pull requests here** (the remote is not on GitHub, or the repo's contract lands by direct push): run
+`scripts/check <ticket>` without `--pr` and show the before and after in your message. Land on the integration branch
+only if the repo's contract lets you, after its own checks; otherwise report `READY_FOR_INTEGRATOR` with the branch.
+
 ## 7. Report
 
 One status line (`INTEGRATED <sha>`, `READY_FOR_INTEGRATOR`, `WAITING <condition>`,

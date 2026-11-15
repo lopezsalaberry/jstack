@@ -2,10 +2,11 @@
 """brief: write the brief of one worker, so that nothing a worker needs depends on the orchestrator remembering it.
 
   brief TICKET --goal TEXT --done-when TEXT --touches PATHS --model MODEL --effort LEVEL
-        [--surface NAME] [--remote NAME] [--stop-before-merge] [--note TEXT] [--repo PATH]
+        [--surface NAME] [--stop-before-merge] [--note TEXT] [--repo PATH]
 
 Prints a brief that stands alone: the ticket, the files it may touch, the observable condition that ends it, the
-integration branch from the repo's settings, how to work (the `ticket` skill, the evidence checklist, the `check`
+integration branch from the repo's settings (as `AGENTS.md` has them on the integration branch, not on whatever branch
+this checkout is on; `remote` names the remote for a fork), how to work (the `ticket` skill, the evidence checklist, the `check`
 gate), what to do instead of asking, and the status line to end with. When a path in PATHS, or a tracked file under
 a folder or glob in PATHS, matches the `ui_paths` setting, it adds the design block: the tokens to read and the before
 and after pictures to publish.
@@ -47,7 +48,6 @@ def main(argv: list[str]) -> int:
     for name in ("goal", "done-when", "touches", "model", "effort"):
         ap.add_argument(f"--{name}", required=True)
     ap.add_argument("--surface", default="")
-    ap.add_argument("--remote", default="origin", help="the remote of the integration branch, when it is not origin (a fork)")
     ap.add_argument("--stop-before-merge", action="store_true")
     ap.add_argument("--note", default="")
     ap.add_argument("--repo", type=Path, default=Path.cwd())
@@ -57,13 +57,12 @@ def main(argv: list[str]) -> int:
         ap.error(f"empty: {', '.join(empty)}")
     top = subprocess.run(["git", "-C", str(args.repo), "rev-parse", "--show-toplevel"], capture_output=True, text=True)
     root = Path(top.stdout.strip()) if top.returncode == 0 else args.repo.resolve()
-    values = settings.resolve(root)
-    branch = values["integration_branch"]
+    values, source = settings.resolve_integrated(root)
+    branch, remote = values["integration_branch"], values["remote"]
     touches = [t.strip() for t in args.touches.split(",") if t.strip()]
     ui = touches_ui(root, values, touches)
     t = args.ticket
     surface = f" --surface {args.surface.strip()}" if args.surface.strip() else ""
-    base = "" if args.remote == "origin" else f" --base {args.remote}/{branch}"
     lines = [
         f"Ticket {t}: {args.goal.strip()}",
         f"Repo: {root}. Integration branch: {branch}.",
@@ -71,10 +70,10 @@ def main(argv: list[str]) -> int:
         f"Done when: {args.done_when.strip()}",
         "",
         "How to work:",
-        f"- Follow the `ticket` skill end to end, in your own worktree and branch from {args.remote}/{branch}.",
+        f"- Follow the `ticket` skill end to end, in your own worktree and branch from {remote}/{branch}.",
         "- The commands named below (`checklist-init`, `check`, `publish`) are in that skill's `scripts/` folder.",
         f"- Start the evidence before the change: `checklist-init {t}{surface}`.",
-        f"- Before you finish, run `check {t} --pr <number>{base}` and paste what it prints in the PR. Every line must be PASS or SKIP.",
+        f"- Before you finish, run `check {t} --pr <number>` and paste what it prints in the PR. Every line must be PASS or SKIP.",
         ("- Do not merge. Leave the PR open and green and report READY_FOR_INTEGRATOR: this repo has one integrator."
          if args.stop_before_merge else
          f"- Merge the PR into {branch} when `check` is green. Do not wait for other tickets."),
@@ -100,6 +99,7 @@ def main(argv: list[str]) -> int:
               "End with one status line: INTEGRATED <sha>, READY_FOR_INTEGRATOR, WAITING <condition> or "
               "BLOCKED(env|task|decision) <reason and evidence>. Then say what you did not verify."]
     print("\n".join(lines))
+    print(f"brief: settings from {source}", file=sys.stderr)
     print(f"brief: start this worker on {args.model.strip()} at effort {args.effort.strip()}"
           + (" (UI ticket: the design block is included)" if ui else ""), file=sys.stderr)
     return 0

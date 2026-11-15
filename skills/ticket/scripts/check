@@ -20,7 +20,8 @@ Always:
 With --pr N (needs `gh`):
   head         the PR's head is this HEAD
   screenshot   a UI change links a picture or video file a reader can open, and its "Not shown" line is written
-  review       every `Review:` line is a good verdict on this patch; one is required for a UI change, or for every
+  review       the last `Review:` line of each starter on this patch is a good verdict (lines on older patches are
+               history once one covers this patch); one is required for a UI change, or for every
                change when `verify_mode` is `always`. With --integrating (someone other than the author is about to
                merge) the required one must say `started by integrator`: a review the author started does not count
   ci           no check failed and none is still running
@@ -200,25 +201,36 @@ def main(argv: list[str]) -> int:
                 say("FAIL", "screenshot", "the Evidence block still says TODO under \"Not shown\": say what the proof does not cover")
             else:
                 say("PASS", "screenshot", f"{len(pictures(everything))} shown")
-            verdicts = re.findall(r"(?m)^Review:.*?\bverdict\s+([A-Z+]+)(?:.*?\bpatch\s+([0-9a-f]{7,40}))?", body)
+            # One entry per `Review:` line, in order. A line on an older patch is history once some line covers this
+            # patch: a FAIL that was fixed, or the author's review before the integrator's round, no longer decides.
+            # Of the lines on this patch, the last one of each starter (author, integrator) is that reviewer's verdict.
+            parsed = []
+            for line in re.findall(r"(?m)^Review:.*$", body):
+                verdict = re.search(r"\bverdict\s+([A-Z+]+)", line)
+                patch = re.search(r"\bpatch\s+([0-9a-f]{7,40})", line)
+                who = re.search(r"\bstarted by\s+(\w+)", line)
+                parsed.append((verdict.group(1) if verdict else "?", patch.group(1) if patch else "", who.group(1).lower() if who else "author"))
             needed = values["verify_mode"] != "off" and (bool(ui) or values["verify_mode"] == "always")
-            bad = [v for v, _ in verdicts if v not in GOOD_VERDICT]
-            loose = [v for v, p in verdicts if v in GOOD_VERDICT and not p]
-            stale = [p for v, p in verdicts if v in GOOD_VERDICT and p
-                     and run([sys.executable, str(HERE / "proof-valid"), "--patch-id", p, "--base", base], root).returncode == 1]
-            mine = [line for line in re.findall(r"(?m)^Review:.*$", body) if re.search(r"\bstarted by integrator\b", line)
-                    and (m := re.search(r"\bverdict\s+([A-Z+]+)", line)) and m.group(1) in GOOD_VERDICT]
-            if bad:
-                say("FAIL", "review", f"a `Review:` line says {bad[0]}")
-            elif loose:
+            loose = [v for v, p, _ in parsed if not p]
+            current_patch = {p: run([sys.executable, str(HERE / "proof-valid"), "--patch-id", p, "--base", base], root).returncode != 1
+                             for _, p, _ in parsed if p}
+            current = [(v, w) for v, p, w in parsed if p and current_patch[p]]
+            last = {w: v for v, w in current}
+            bad = [v for v in last.values() if v not in GOOD_VERDICT]
+            mine = last.get("integrator") in GOOD_VERDICT
+            history = len(parsed) - len(current) - len(loose)
+            if loose:
                 say("FAIL", "review", "a `Review:` line has no `patch <id>`, so nothing ties the verdict to this change")
-            elif stale:
+            elif parsed and not current:
                 say("FAIL", "review", "the verdict covers an older patch: ask for a fresh one")
+            elif bad:
+                say("FAIL", "review", f"a `Review:` line says {bad[0]}")
             elif needed and args.integrating and not mine:
-                say("FAIL", "review", "the review that lets someone else merge is one the integrator starts, and no `Review:` line says "
-                    "`started by integrator`: see the `review` skill. The author's own review stays as its check")
-            elif verdicts:
-                say("PASS", "review", f"{len(verdicts)} verdict line(s)" + (f", {len(mine)} started by the integrator" if args.integrating else ""))
+                say("FAIL", "review", "the review that lets someone else merge is one the integrator starts, and no `Review:` line on this "
+                    "patch says `started by integrator`: see the `review` skill. The author's own review stays as its check")
+            elif parsed:
+                say("PASS", "review", f"{len(current)} verdict line(s) on this patch" + (f", {history} on older ones kept as history" if history else "")
+                    + (", the integrator's included" if args.integrating and mine else ""))
             elif needed:
                 say("FAIL", "review", "this change needs an independent verdict (`verify_mode`) and the PR has no `Review:` line: see the `review` skill")
             else:

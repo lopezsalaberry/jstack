@@ -34,7 +34,7 @@ environment `JSTACK_<KEY>`, then the repo, then the operator's file, then the de
 | `design_check` | empty | Command that must exit 0 on a UI change, run from the repo root. Empty: the shipped token-lint |
 | `verify_mode` | `visible` | When `review` runs in verify mode: `off`, `visible` (user-visible changes) or `always` |
 | `reviewer_models` | `auto` | Ordered preference for `review`: `provider:model`, a bare `provider`, or `auto` (anything the harness can start, other families first). `provider-a, provider-b, auto` means the first that has quota, then a fresh session of whatever is left |
-| `routing` | empty | Free text the orchestrator reads when it picks a model for a ticket: what to prefer for which kind of work. A suggestion, not a rule |
+| `routing` | strongest model for bug fixes, data, parsers, auth, concurrency and UI; fast model for mechanical edits, docs and small features on an existing pattern | Free text the orchestrator reads when it picks a model for a ticket: what to prefer for which kind of work. A suggestion, not a rule. `routing:` with nothing after it turns the default off |
 | `max_parallel` | empty | Cap on workers at once. Empty: quota alone limits |
 | `quota_probe` | the probe shipped with `wave` | A command that answers `--provider <name>` with exit 0 (has quota), 1 (none) or 2 (no data). Callers always run `wave`'s `scripts/quota-probe`, which keeps the refusal marks and asks this command for the reading |
 

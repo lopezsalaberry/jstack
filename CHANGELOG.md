@@ -14,6 +14,17 @@ Four findings from a day of real tickets in Open Training (2026-11-14), each wit
 - `check` passes a worktree left detached at the PR's head when given `--pr`, so an integrator can check a worker's
   worktree without checking out its branch.
 
+### Fixed (second day, 2026-11-15)
+- `check`: a `Review:` line on an older patch is history once a line covers this patch, and the last line of each
+  starter on this patch is that reviewer's verdict. A FAIL that was fixed, or the author's line before the
+  integrator's round, no longer blocks (OT-1-026 had both passed to plain text by hand).
+- `brief` reads the settings from `AGENTS.md` on the integration branch, not from the branch the orchestrator runs
+  it on, and takes the remote from `remote`; `--remote` is gone. The first worker of the new settings had been told
+  the old ones. stderr says where the settings came from.
+- `routing` has a default: the strongest model for bug fixes, data, parsers, auth, concurrency and UI; the fast model
+  for mechanical edits, docs and small features on an existing pattern. The three tickets escalated to the operator
+  in two days were Sonnet (3 of 14), none on Opus (0 of 8). `routing:` with nothing after it turns it off.
+
 ### Added
 - Setting `remote` (default `origin`): the remote that holds the integration branch and the pull requests. A fork whose
   `origin` is upstream names its own, and `check` and `publish` point `gh` at that repo (a `GH_REPO` the caller set wins).

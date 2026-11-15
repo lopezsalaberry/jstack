@@ -27,7 +27,9 @@ DEFAULTS = {
     "design_check": "",
     "verify_mode": "visible",
     "reviewer_models": "auto",
-    "routing": "",
+    # Measured in Open Training, 2026-11-14/15: the three tickets escalated to the operator were 3 of 14 on Sonnet,
+    # none of 8 on Opus, all hard logic (a dual write, matching sessions, reading free text).
+    "routing": "the strongest model (Opus) for bug fixes, data or schema changes, parsers and anything that reads outside input, auth and security, concurrency, and every UI or UX change; the fast model (Sonnet) for mechanical edits, docs, and small features that follow an existing pattern and change no data",
     "max_parallel": "",
     "quota_probe": shlex.quote(str(SKILLS / "wave" / "scripts" / "quota-probe")),  # a path may hold spaces
 }
@@ -45,10 +47,12 @@ def pairs(lines) -> dict[str, str]:
 
 def block(agents: Path) -> dict[str, str]:
     """The `key: value` lines under the `## jstack settings` heading, up to the next heading."""
-    if not agents.is_file():
-        return {}
+    return block_text(agents.read_text()) if agents.is_file() else {}
+
+
+def block_text(text: str) -> dict[str, str]:
     inside, kept = False, []
-    for line in agents.read_text().splitlines():
+    for line in text.splitlines():
         if re.match(r"^#{1,6}\s", line):
             inside = bool(re.match(r"^#{1,6}\s*jstack settings\s*$", line, re.I))
         elif inside:
@@ -84,9 +88,10 @@ def gh_env(repo: Path, remote: str) -> dict[str, str]:
     return env
 
 
-def resolve(repo: Path, env: dict[str, str] | None = None) -> dict[str, str]:
+def resolve(repo: Path, env: dict[str, str] | None = None, configured: dict[str, str] | None = None) -> dict[str, str]:
     env = os.environ if env is None else env
-    configured, mine = block(repo / "AGENTS.md"), user_values(env)
+    configured = block(repo / "AGENTS.md") if configured is None else configured
+    mine = user_values(env)
     out: dict[str, str] = {}
     for key, default in DEFAULTS.items():  # `remote` comes first: the integration branch's default is read from it
         if f"JSTACK_{key.upper()}" in env:
@@ -98,6 +103,17 @@ def resolve(repo: Path, env: dict[str, str] | None = None) -> dict[str, str]:
         else:
             out[key] = default if default is not None else default_branch(repo, out["remote"])
     return out
+
+
+def resolve_integrated(repo: Path, env: dict[str, str] | None = None) -> tuple[dict[str, str], str]:
+    """The settings as the integration branch has them, and where they came from. A checkout on another branch (an
+    orchestrator's program branch) may carry an older `AGENTS.md`; what a worker is told must not depend on that."""
+    here = resolve(repo, env)
+    ref = f"{here['remote']}/{here['integration_branch']}"
+    shown = subprocess.run(["git", "-C", str(repo), "show", f"{ref}:AGENTS.md"], capture_output=True, text=True)
+    if shown.returncode != 0:
+        return here, f"this checkout's AGENTS.md ({ref} has none or is not fetched)"
+    return resolve(repo, env, block_text(shown.stdout)), f"AGENTS.md on {ref}"
 
 
 def glob_re(glob: str) -> re.Pattern:

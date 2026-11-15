@@ -53,7 +53,10 @@ def test_settings_precedence_is_env_then_agents_md_then_default(tmp_path):
     assert out["integration_branch"] == "develop"
     assert out["reviewer_models"] == "a:m1, b:m2"  # inline comment stripped
     assert out["max_parallel"] == "4"             # a later heading does not leak in
-    assert out["verify_mode"] == "visible" and out["routing"] == ""
+    assert out["verify_mode"] == "visible" and out["routing"].startswith("the strongest model (Opus) for bug fixes")
+    (tmp_path / "off").mkdir()
+    off = repo(tmp_path / "off", "# P\n\n## jstack settings\nintegration_branch: main\nrouting:\n")
+    assert run([SETTINGS, "--repo", off, "routing"], cwd=tmp_path).stdout.strip() == "", "an empty line turns the default off"
     env = run([SETTINGS, "--repo", r, "max_parallel"], cwd=tmp_path, env={"JSTACK_MAX_PARALLEL": "5"})
     assert env.stdout.strip() == "5"
 
@@ -200,7 +203,7 @@ def test_the_operators_own_settings_sit_between_the_repo_and_the_default(tmp_pat
     assert out["max_parallel"] == "7"                             # the repo's value replaces the operator's
     over = run([SETTINGS, "--repo", r, "reviewer_models"], cwd=tmp_path, env={**env, "JSTACK_REVIEWER_MODELS": "x"})
     assert over.stdout.strip() == "x"                             # the environment still wins
-    assert run([SETTINGS, "--repo", r, "routing"], cwd=tmp_path).stdout.strip() == ""    # no file: the default
+    assert run([SETTINGS, "--repo", r, "routing"], cwd=tmp_path).stdout.startswith("the strongest model")    # no file: the default
     home_file = tmp_path / ".config" / "jstack" / "settings"      # HOME is the working directory in these tests
     home_file.parent.mkdir(parents=True)
     home_file.write_text("routing: from the home file\n")
@@ -962,9 +965,17 @@ def test_the_review_that_lets_someone_else_merge_is_the_one_the_integrator_start
     assert code == 1 and "started by integrator" in lines["FAIL review"], out
     env = _pr_for(r, tmp_path, shown + line("author") + line("integrator"))
     code, lines, out = _check(r, "--pr", "7", "--integrating", env=env)
-    assert code == 0 and "1 started by the integrator" in lines["PASS review"], out
+    assert code == 0 and "the integrator's included" in lines["PASS review"], out
     bad = line("integrator").replace("verdict APPROVE", "verdict CHANGES")
     assert "FAIL review" in _check(r, "--pr", "7", "--integrating", env=_pr_for(r, tmp_path, shown + line("author") + bad))[1]
+    # Open Training, OT-1-026: a fixed FAIL and the author's line on the patch before the integrator's fix both blocked.
+    old = line("author").replace(patch, "f" * 40)
+    fixed = old.replace("verdict APPROVE", "verdict FAIL")
+    code, lines, out = _check(r, "--pr", "7", "--integrating", env=_pr_for(r, tmp_path, shown + fixed + old + line("integrator")))
+    assert code == 0 and "2 on older ones kept as history" in lines["PASS review"], out
+    assert "older patch" in _check(r, "--pr", "7", env=_pr_for(r, tmp_path, shown + old))[1]["FAIL review"], "history alone is not a verdict"
+    again = line("integrator").replace("verdict APPROVE", "verdict FAIL") + line("integrator")
+    assert _check(r, "--pr", "7", "--integrating", env=_pr_for(r, tmp_path, shown + again))[0] == 0, "the reviewer's last word on this patch counts"
 
 
 def test_an_integrator_can_check_a_worktree_left_detached_at_the_prs_head(tmp_path):
@@ -1167,9 +1178,25 @@ def test_a_fork_whose_origin_is_upstream_publishes_and_branches_from_its_own_rem
     assert "jstack-evidence/T-1" in _out("git", "-C", mine, "for-each-ref") and "jstack-evidence" not in _out("git", "-C", upstream, "for-each-ref"), \
         "the pictures go to the fork, never to upstream"
     (tmp_path / "b").mkdir()
-    plain = repo(tmp_path / "b", "# P\n\n## jstack settings\nintegration_branch: open-training\n")
-    text = _brief(plain, "--touches", "server/api.py", "--model", "m", "--effort", "low", "--remote", "private").stdout
-    assert "branch from private/open-training" in text and "`check T-7 --pr <number> --base private/open-training`" in text
+    plain = repo(tmp_path / "b", "# P\n\n## jstack settings\nremote: private\nintegration_branch: open-training\n")
+    text = _brief(plain, "--touches", "server/api.py", "--model", "m", "--effort", "low").stdout
+    assert "branch from private/open-training" in text and "`check T-7 --pr <number>`" in text, "check reads `remote` itself"
+
+
+def test_brief_takes_the_settings_the_integration_branch_has_not_the_checkouts(tmp_path):
+    # Open Training, 2026-11-15: the orchestrator ran brief on its program branch, whose AGENTS.md was older, and the
+    # first worker of the new settings was told origin/open-training and ui_paths without the exclusion.
+    r = repo(tmp_path, "# P\n\n## jstack settings\nintegration_branch: main\nui_paths: app/**\n")
+    bare = tmp_path / "origin.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(bare)], check=True, capture_output=True)
+    git(r, "remote", "add", "origin", str(bare))
+    git(r, "push", "-q", "origin", "main")
+    git(r, "checkout", "-q", "-b", "program")
+    (r / "AGENTS.md").write_text("# P\n\n## jstack settings\nintegration_branch: main\n")
+    git(r, "commit", "-q", "-am", "an older copy of the settings")
+    git(r, "fetch", "-q", "origin")
+    done = _brief(r, "--touches", "app/screen.css", "--model", "m", "--effort", "low")
+    assert "Design: this ticket touches UI files" in done.stdout and "settings from AGENTS.md on origin/main" in done.stderr, done.stderr
 
 
 def test_check_runs_a_repos_own_design_command_as_the_shell_line_it_is(tmp_path):

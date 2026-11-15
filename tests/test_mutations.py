@@ -91,8 +91,8 @@ MUTATIONS = {
         "skills/ticket/scripts/check", "for line in text.splitlines() if not NOT_A_SCREENSHOT.search(line)", "for line in text.splitlines() if True",
         "tests/test_tools.py::test_check_reads_the_pull_request_head_screenshot_review_ci_and_mergeability"),
     "a verdict on an older patch still counts": (
-        "skills/ticket/scripts/check", 'run([sys.executable, str(HERE / "proof-valid"), "--patch-id", p, "--base", base], root).returncode == 1]',
-        'False]',
+        "skills/ticket/scripts/check", 'run([sys.executable, str(HERE / "proof-valid"), "--patch-id", p, "--base", base], root).returncode != 1',
+        'True',
         "tests/test_tools.py::test_check_reads_the_pull_request_head_screenshot_review_ci_and_mergeability"),
     "a failed CI check passes the gate": (
         "skills/ticket/scripts/check", "            if red:", "            if False:",
@@ -104,7 +104,7 @@ MUTATIONS = {
         "skills/ticket/scripts/check", '        failed = [t for t, result, *_ in targets if result != "PASS"]', "        failed = []",
         "tests/test_tools.py::test_check_passes_a_proven_change_and_names_what_is_missing"),
     "a verdict tied to no patch counts": (
-        "skills/ticket/scripts/check", "            elif loose:", "            elif False:",
+        "skills/ticket/scripts/check", "            if loose:", "            if False:",
         "tests/test_tools.py::test_check_reads_the_pull_request_head_screenshot_review_ci_and_mergeability"),
     "a link that is not a picture counts as a screenshot": (
         "skills/ticket/scripts/check", 're.compile(rf"\\]\\(\\s*<?{FILE}", re.I),', 're.compile(r"\\]\\(\\s*<?https?://\\S+", re.I),',

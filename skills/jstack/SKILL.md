@@ -27,8 +27,9 @@ environment `JSTACK_<KEY>`, then the repo, then the operator's file, then the de
 
 | Key | Default | Meaning |
 |---|---|---|
+| `remote` | `origin` | The remote that holds the integration branch and the pull requests. A fork whose `origin` is upstream names its own remote here, and `check` and `publish` point `gh` at that repo |
 | `integration_branch` | the remote's default branch | Where green tickets merge |
-| `ui_paths` | empty | Comma list of globs (`src/ui/**, **/*.css`) that mark a change as UI. Empty: the design gate is off |
+| `ui_paths` | empty | Comma list of globs (`src/ui/**, **/*.css`) that mark a change as UI; a glob that starts with `!` takes files back out (`src/**, !src/lib/**`). Empty: the design gate is off |
 | `design_tokens` | `design/tokens.json` | The design system's tokens, which the shipped token-lint checks against |
 | `design_check` | empty | Command that must exit 0 on a UI change, run from the repo root. Empty: the shipped token-lint |
 | `verify_mode` | `visible` | When `review` runs in verify mode: `off`, `visible` (user-visible changes) or `always` |

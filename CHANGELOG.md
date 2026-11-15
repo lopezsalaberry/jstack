@@ -2,6 +2,23 @@
 
 Format follows Keep a Changelog. Versions are tagged `vX.Y.Z`; install a tag, not `main`.
 
+## Unreleased (trial in Open Training)
+
+Four findings from a day of real tickets in Open Training (2026-11-14), each with its reproduction as a test.
+
+### Changed
+- `review`: when someone other than the author merges, the review that counts is the one the integrator starts, in a
+  fresh session that gets only the issue, the criteria and the diff. The author's own review stays as its check. Three
+  times out of three a fresh integrator review found defects the author's review had approved. The `Review:` line says
+  `started by <integrator|author>`, and `check --integrating` (the `wave` skill's validation) requires the integrator's.
+- `check` passes a worktree left detached at the PR's head when given `--pr`, so an integrator can check a worker's
+  worktree without checking out its branch.
+
+### Added
+- Setting `remote` (default `origin`): the remote that holds the integration branch and the pull requests. A fork whose
+  `origin` is upstream names its own, and `check` and `publish` point `gh` at that repo (a `GH_REPO` the caller set wins).
+- `ui_paths` takes `!glob` entries out: `frontend/src/**, !frontend/src/lib/**` no longer asks a logic change for screenshots.
+
 ## 1.0.0
 
 The same premises with a third of the text. Measured before this: in 143 sessions, the tools that are one command were

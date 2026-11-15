@@ -942,6 +942,78 @@ def test_check_reads_the_pull_request_head_screenshot_review_ci_and_mergeability
     assert "requests changes" in check(shown + review, reviewDecision="CHANGES_REQUESTED")[1]["FAIL mergeable"]
 
 
+def _pr_for(r, tmp_path, body):
+    data = {"body": body, "comments": [], "statusCheckRollup": [], "mergeable": "MERGEABLE", "reviewDecision": "",
+            "headRefOid": _out("git", "-C", r, "rev-parse", "HEAD")}
+    return _fake_gh(tmp_path, data)
+
+
+def test_the_review_that_lets_someone_else_merge_is_the_one_the_integrator_started(tmp_path):
+    # Open Training, 2026-11-14: three times out of three a fresh review started by the integrator found what the
+    # worker's own review had approved, once a token that could delete another user's routes.
+    r = _proven_ticket(tmp_path)
+    _row(r, "| the button is blue | PASS | 5 | saw it | after-button.png |")
+    patch = re.search(r"Patch-id: (\S+)", run([PROOFVALID, "--print", "--base", "main"], cwd=r).stdout).group(1)
+    shown = f"![After: button]({WEB}/blob/abc/after-button.png?raw=true)\n\n**Not shown:** dark mode\n"
+    line = lambda who: f"Review: break by model-x | independence L2 | started by {who} | verdict APPROVE | patch {patch}\n"
+    env = _pr_for(r, tmp_path, shown + line("author"))
+    assert "PASS review" in _check(r, "--pr", "7", env=env)[1], "the worker's own gate takes its own review"
+    code, lines, out = _check(r, "--pr", "7", "--integrating", env=env)
+    assert code == 1 and "started by integrator" in lines["FAIL review"], out
+    env = _pr_for(r, tmp_path, shown + line("author") + line("integrator"))
+    code, lines, out = _check(r, "--pr", "7", "--integrating", env=env)
+    assert code == 0 and "1 started by the integrator" in lines["PASS review"], out
+    bad = line("integrator").replace("verdict APPROVE", "verdict CHANGES")
+    assert "FAIL review" in _check(r, "--pr", "7", "--integrating", env=_pr_for(r, tmp_path, shown + line("author") + bad))[1]
+
+
+def test_an_integrator_can_check_a_worktree_left_detached_at_the_prs_head(tmp_path):
+    r = _proven_ticket(tmp_path, file="server/api.py", text="x = 1\n")
+    _row(r, "| the api answers | PASS | 4 | ran the test | after.txt |")
+    env = _pr_for(r, tmp_path, "Fixes it.")
+    git(r, "checkout", "-q", "--detach")
+    code, lines, out = _check(r, "--pr", "7", env=env)
+    assert code == 0 and "detached at the PR's head" in lines["PASS branch"], out
+    assert "detached HEAD" in _check(r)[1]["FAIL branch"], "without a PR there is no head to compare with"
+    git(r, "checkout", "-q", "HEAD~1")
+    assert "not the PR's head" in _check(r, "--pr", "7", env=env)[1]["FAIL branch"]
+
+
+def test_a_fork_names_its_own_remote_and_gh_asks_that_repo(tmp_path):
+    # Open Training's workers had `origin` = upstream: check and publish asked the wrong repo until GH_REPO was set by hand.
+    r = _proven_ticket(tmp_path, file="server/api.py", text="x = 1\n")
+    git(r, "remote", "add", "origin", "https://github.com/upstream/app.git")
+    git(r, "remote", "add", "private", "git@github.com:me/app.git")
+    git(r, "checkout", "-q", "main")
+    (r / "AGENTS.md").write_text("# P\n\n## jstack settings\nremote: private\nintegration_branch: main\n")
+    git(r, "commit", "-q", "-am", "fork")
+    git(r, "checkout", "-q", "feat")
+    git(r, "rebase", "-q", "main")
+    _row(r, "| the api answers | PASS | 4 | ran the test | after.txt |")
+    assert run([SETTINGS, "--repo", r, "remote"]).stdout.strip() == "private"
+    env = _pr_for(r, tmp_path, "Fixes it.")
+    gh = Path(env["PATH"].split(":")[0]) / "gh"
+    gh.write_text(gh.read_text().replace("a = sys.argv[1:]\n", "a = sys.argv[1:]\nimport os\n"
+                  "(pathlib.Path(__file__).parent.parent / 'gh-repo.txt').write_text(os.environ.get('GH_REPO', ''))\n"))
+    code, lines, out = _check(r, "--pr", "7", env=env)
+    assert code == 0 and (tmp_path / "gh-repo.txt").read_text() == "me/app", out
+    code, lines, out = _check(r, "--pr", "7", env={**env, "GH_REPO": "someone/else"})
+    assert (tmp_path / "gh-repo.txt").read_text() == "someone/else", "a GH_REPO the caller set wins"
+
+
+def test_ui_paths_can_take_files_back_out(tmp_path):
+    # Open Training: frontend/src/** marked frontend/src/lib/*.js as UI, and every logic change failed `screenshot`.
+    r = _proven_ticket(tmp_path, file="frontend/src/lib/load.js", text="export const x = 1\n")
+    git(r, "checkout", "-q", "main")
+    (r / "AGENTS.md").write_text("# P\n\n## jstack settings\nintegration_branch: main\nui_paths: frontend/src/**, !frontend/src/lib/**\n")
+    git(r, "commit", "-q", "-am", "ui paths")
+    git(r, "checkout", "-q", "feat")
+    git(r, "rebase", "-q", "main")
+    _row(r, "| the load is right | PASS | 4 | ran the test | after.txt |")
+    code, lines, out = _check(r, "--pr", "7", env=_pr_for(r, tmp_path, "Fixes it."))
+    assert code == 0 and "SKIP screenshot" in lines and "SKIP design" in lines, out
+
+
 def test_check_asks_nothing_about_screens_of_a_change_with_no_ui_file(tmp_path):
     r = _proven_ticket(tmp_path, file="server/api.py", text="x = 1\n")
     _row(r, "| the api answers | PASS | 4 | ran the test | after.txt |")

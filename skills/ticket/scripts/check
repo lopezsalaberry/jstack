@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """check: the merge gate as one command. Run it before you merge or hand a ticket over, and paste what it prints.
 
-  check [TICKET] [--pr N] [--surface NAME] [--repo PATH] [--base REF]
+  check [TICKET] [--pr N] [--integrating] [--surface NAME] [--repo PATH] [--base REF]
 
 One line per rule: PASS, FAIL or SKIP (the rule does not apply, and why). Exit 0 when nothing fails, 1 otherwise,
 2 on a usage error. Whoever validates the ticket later runs the same command on the same head.
 
 Always:
-  branch       the work is on its own branch, not the integration branch and not a detached HEAD
+  branch       the work is on its own branch, not the integration branch and not a detached HEAD (detached is
+               fine with --pr when HEAD is the PR's head: an integrator checking a worker's worktree)
   change       HEAD adds something over BASE
   clean tree   no uncommitted change to a tracked file
-  up to date   the branch contains the tip of BASE (default origin/<integration_branch>, fetched first)
+  up to date   the branch contains the tip of BASE (default <remote>/<integration_branch>, fetched first)
   proof        .artifacts/<ticket>/checklist.md records this patch (`proof-valid`), has a row per target,
                and every row is PASS at level 4 or 5 ("unproven" and FAIL both fail)
   surface      when the ticket must be proven somewhere (the checklist's `Required surface:` line, or --surface from
@@ -20,9 +21,13 @@ With --pr N (needs `gh`):
   head         the PR's head is this HEAD
   screenshot   a UI change links a picture or video file a reader can open, and its "Not shown" line is written
   review       every `Review:` line is a good verdict on this patch; one is required for a UI change, or for every
-               change when `verify_mode` is `always`
+               change when `verify_mode` is `always`. With --integrating (someone other than the author is about to
+               merge) the required one must say `started by integrator`: a review the author started does not count
   ci           no check failed and none is still running
   mergeable    GitHub says it can merge: no conflict with the base, no review requesting changes
+
+`remote` (setting, default origin) is the remote that holds the integration branch and the pull requests: a fork
+whose `origin` is upstream sets it to its own remote, and `gh` is pointed at that repo.
 
 TICKET may be left out when `.artifacts/` holds exactly one checklist. This is what a command can check. It does
 not know whether a change with no UI file is high-risk or user-visible, whether a picture shows the right screen, or
@@ -96,6 +101,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument("ticket", nargs="?")
     ap.add_argument("--pr")
     ap.add_argument("--surface")
+    ap.add_argument("--integrating", action="store_true")
     ap.add_argument("--repo", type=Path, default=Path.cwd())
     ap.add_argument("--base")
     args = ap.parse_args(argv)
@@ -106,19 +112,21 @@ def main(argv: list[str]) -> int:
     root = Path(top.stdout.strip())
     git = lambda *a: run(["git", *a], root)
     values = settings.resolve(root)
-    target = values["integration_branch"]
-    base = args.base or f"origin/{target}"
+    target, remote = values["integration_branch"], values["remote"]
+    base = args.base or f"{remote}/{target}"
     out: list[tuple[str, str, str]] = []
     say = lambda level, name, detail="": out.append((level, name, detail))
 
     branch = git("branch", "--show-current").stdout.strip()
-    say("FAIL" if branch in (target, "") else "PASS", "branch",
-        f"you are on {target}, the integration branch: move the work to its own branch" if branch == target else
-        branch or "detached HEAD: check out the ticket's branch")
+    detached = branch == "" and bool(args.pr)  # decided once the PR's head is known
+    if not detached:
+        say("FAIL" if branch in (target, "") else "PASS", "branch",
+            f"you are on {target}, the integration branch: move the work to its own branch" if branch == target else
+            branch or "detached HEAD: check out the ticket's branch")
     dirty = git("status", "--porcelain", "--untracked-files=no").stdout.splitlines()
     say("FAIL" if dirty else "PASS", "clean tree", f"{len(dirty)} tracked file(s) with uncommitted changes, for example {dirty[0][3:]}" if dirty else "")
     if not args.base:
-        git("fetch", "-q", "origin", target)  # best effort: without a network the last fetched tip is used
+        git("fetch", "-q", remote, target)  # best effort: without a network the last fetched tip is used
     if git("rev-parse", "--verify", "-q", f"{base}^{{commit}}").returncode != 0:
         say("FAIL", "up to date", f"{base} does not exist here; fetch it or pass --base")
         changed = []
@@ -170,7 +178,8 @@ def main(argv: list[str]) -> int:
     if not args.pr:
         say("SKIP", "pull request", "pass --pr N to check the PR's head, screenshot, review, CI and mergeability")
     else:
-        view = run(["gh", "pr", "view", args.pr, "--json", "body,comments,statusCheckRollup,mergeable,reviewDecision,headRefOid"], root)
+        view = subprocess.run(["gh", "pr", "view", args.pr, "--json", "body,comments,statusCheckRollup,mergeable,reviewDecision,headRefOid"],
+                              cwd=root, capture_output=True, text=True, env=settings.gh_env(root, remote))
         if view.returncode != 0:
             say("FAIL", "pull request", f"gh pr view {args.pr} failed: {view.stderr.strip() or 'no output'}")
         else:
@@ -179,6 +188,9 @@ def main(argv: list[str]) -> int:
             everything = body + "\n" + "\n".join(c.get("body", "") for c in pr.get("comments") or [])
             head = git("rev-parse", "HEAD").stdout.strip()
             same = pr.get("headRefOid") == head
+            if detached:
+                say("PASS" if same else "FAIL", "branch", "detached at the PR's head" if same else
+                    "detached HEAD that is not the PR's head: check out the PR's branch")
             say("PASS" if same else "FAIL", "head", "" if same else f"the PR is at {str(pr.get('headRefOid'))[:10]}, this checkout at {head[:10]}: push or pull")
             if not ui:
                 say("SKIP", "screenshot", "not a UI change")
@@ -194,14 +206,19 @@ def main(argv: list[str]) -> int:
             loose = [v for v, p in verdicts if v in GOOD_VERDICT and not p]
             stale = [p for v, p in verdicts if v in GOOD_VERDICT and p
                      and run([sys.executable, str(HERE / "proof-valid"), "--patch-id", p, "--base", base], root).returncode == 1]
+            mine = [line for line in re.findall(r"(?m)^Review:.*$", body) if re.search(r"\bstarted by integrator\b", line)
+                    and (m := re.search(r"\bverdict\s+([A-Z+]+)", line)) and m.group(1) in GOOD_VERDICT]
             if bad:
                 say("FAIL", "review", f"a `Review:` line says {bad[0]}")
             elif loose:
                 say("FAIL", "review", "a `Review:` line has no `patch <id>`, so nothing ties the verdict to this change")
             elif stale:
                 say("FAIL", "review", "the verdict covers an older patch: ask for a fresh one")
+            elif needed and args.integrating and not mine:
+                say("FAIL", "review", "the review that lets someone else merge is one the integrator starts, and no `Review:` line says "
+                    "`started by integrator`: see the `review` skill. The author's own review stays as its check")
             elif verdicts:
-                say("PASS", "review", f"{len(verdicts)} verdict line(s)")
+                say("PASS", "review", f"{len(verdicts)} verdict line(s)" + (f", {len(mine)} started by the integrator" if args.integrating else ""))
             elif needed:
                 say("FAIL", "review", "this change needs an independent verdict (`verify_mode`) and the PR has no `Review:` line: see the `review` skill")
             else:

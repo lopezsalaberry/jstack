@@ -72,7 +72,7 @@ Rebase onto the integration branch, check that the branch has no PR yet, and ope
 <what you saw and left out, each with a reason>
 ## Who did the work
 - Written by <model>, in <harness>
-- Review: <break|verify> by <model> | independence <L1|L2|L3> | verdict <...> | patch <id>
+- Review: <break|verify> by <model> | independence <L1|L2|L3> | started by <integrator|author> | verdict <...> | patch <id>
 ```
 
 `scripts/publish <ticket> --pr <number> --not-shown "<what the proof does not cover>"` adds the `## Evidence` section (do not write that heading yourself):
@@ -115,7 +115,7 @@ can check, so three things stay yours: a high-risk or user-visible change that t
 skill even when `check` skips the review line; a red CI job that never ran a step is explained next to the output; and the checklist is never edited
 to make a line pass.
 
-Merge with the method the repo uses, through branch protection, never with `--admin`.
+Merge the repo's way, through branch protection, never with `--admin`.
 Do not hold a green ticket for a batch. If the operator asked to
 stop before merging, or the repo has one integrator, leave the PR open and green and report `READY_FOR_INTEGRATOR`
 with the PR and its head. After the merge remove the worktree and the branch (`git branch -D`; `-d` refuses after a

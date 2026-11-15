@@ -142,9 +142,10 @@ def test_a_wave_is_validated_before_anything_is_recommended_and_the_operator_is_
     assert {n: steps[n].split("**")[0] for n in steps} == starts, "account, validate, decide, build, recap, record, in that order"
     pins = {
         1: ("One that never reported is a finding, not an absence.",),
-        2: ("A report is not evidence.", "run `ticket`'s `scripts/check <ticket> --pr <number>` yourself",
+        2: ("A report is not evidence.", "run `ticket`'s `scripts/check <ticket> --pr <number> --integrating` yourself",
             "A criterion the worker rewrote is the operator's decision, never met.",
-            "with no `Review:` line for this patch gets `review`, run by you.", "Write down what nobody verified."),
+            "A high-risk or user-visible change gets `review` started by you, a fresh session with only the issue, the criteria and the diff",
+                "theirs does not count for the merge.", "Write down what nobody verified."),
         3: ("a ticket sent back twice goes into the question instead", "Never merge what you could not validate.",
             "Merging what a worker left ready is the operator's call unless they already said to merge green tickets."),
         4: ("A red build does not undo a merge.",),

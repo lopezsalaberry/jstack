@@ -16,6 +16,13 @@ are not this review: neither runs the change.
 Everything else relies on the author's own proof (`ticket`). One round, one reviewer, and the reviewer starts no
 other agents. Nits never start a second round.
 
+**Who starts it.** When someone other than the author merges (an orchestrator, a wave's integrator), the review that
+counts is the one the integrator starts, after the worker reports ready, in a fresh session that gets only the issue,
+the criteria and the diff, never the author's account of it. A review the author started is the author's own check:
+keep it, it finds real defects cheaply, but it does not let the change merge. Measured on 2026-11-14: three times out
+of three, a fresh integrator review found defects (one that let a token delete another user's data) that the
+author's review had approved.
+
 ## 1. Before you ask
 
 `git fetch origin`; the change is everything from `git merge-base HEAD origin/<integration branch>` to the working
@@ -81,8 +88,10 @@ three lines and report `BLOCKED(decision)`.
 Checks must be green before and after. Then write the verdict in the PR, under "Who did the work":
 
 ```
-Review: <break|verify> by <model> | independence <L1|L2|L3|family unknown> | verdict <APPROVE|CHANGES|PASS|PASS+NOTES|FAIL> | patch <id>
+Review: <break|verify> by <model> | independence <L1|L2|L3|family unknown> | started by <integrator|author> | verdict <APPROVE|CHANGES|PASS|PASS+NOTES|FAIL> | patch <id>
 ```
+
+`check --integrating` needs a good verdict that says `started by integrator` whenever a review is required.
 
 `<id>` is the `Patch-id:` that `ticket`'s `scripts/proof-valid --print` gives. The verdict covers that patch: a
 rebase keeps it, a new edit needs a fresh verdict, and `check` reads this line.

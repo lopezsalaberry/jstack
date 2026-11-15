@@ -20,6 +20,7 @@ from pathlib import Path
 
 SKILLS = Path(__file__).resolve().parents[2]
 DEFAULTS = {
+    "remote": "origin",
     "integration_branch": None,  # derived from the remote
     "ui_paths": "",
     "design_tokens": "design/tokens.json",
@@ -60,17 +61,34 @@ def user_values(env) -> dict[str, str]:
     return pairs(path.read_text().splitlines()) if path.is_file() else {}
 
 
-def default_branch(repo: Path) -> str:
-    proc = subprocess.run(["git", "-C", str(repo), "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+def default_branch(repo: Path, remote: str = "origin") -> str:
+    proc = subprocess.run(["git", "-C", str(repo), "symbolic-ref", "--short", f"refs/remotes/{remote}/HEAD"],
                           capture_output=True, text=True)
-    return proc.stdout.strip().removeprefix("origin/") if proc.returncode == 0 and proc.stdout.strip() else "main"
+    return proc.stdout.strip().removeprefix(f"{remote}/") if proc.returncode == 0 and proc.stdout.strip() else "main"
+
+
+def github_repo(url: str) -> str | None:
+    """owner/name of a GitHub remote URL, or None for anything else."""
+    found = re.match(r"^(?:git@|ssh://git@|https?://(?:[^@/]+@)?)github\.com[:/]+([^/]+)/(.+?)(?:\.git)?/?$", url.strip())
+    return f"{found.group(1)}/{found.group(2)}" if found else None
+
+
+def gh_env(repo: Path, remote: str) -> dict[str, str]:
+    """The environment for a `gh` call about this checkout's pull requests: the repo is the one `remote` points to,
+    so a fork whose `origin` is upstream asks its own repo. GH_REPO set by the caller wins."""
+    env = dict(os.environ)
+    if "GH_REPO" not in env:
+        url = subprocess.run(["git", "-C", str(repo), "remote", "get-url", remote], capture_output=True, text=True).stdout
+        if github_repo(url):
+            env["GH_REPO"] = github_repo(url)
+    return env
 
 
 def resolve(repo: Path, env: dict[str, str] | None = None) -> dict[str, str]:
     env = os.environ if env is None else env
     configured, mine = block(repo / "AGENTS.md"), user_values(env)
     out: dict[str, str] = {}
-    for key, default in DEFAULTS.items():
+    for key, default in DEFAULTS.items():  # `remote` comes first: the integration branch's default is read from it
         if f"JSTACK_{key.upper()}" in env:
             out[key] = env[f"JSTACK_{key.upper()}"]
         elif key in configured:
@@ -78,7 +96,7 @@ def resolve(repo: Path, env: dict[str, str] | None = None) -> dict[str, str]:
         elif key in mine:
             out[key] = mine[key]
         else:
-            out[key] = default if default is not None else default_branch(repo)
+            out[key] = default if default is not None else default_branch(repo, out["remote"])
     return out
 
 
@@ -99,9 +117,11 @@ def glob_re(glob: str) -> re.Pattern:
 
 
 def ui_files(values: dict[str, str], files: list[str]) -> list[str]:
-    """The files that count as UI: those matching a glob of `ui_paths`. Empty `ui_paths` means none."""
-    patterns = [glob_re(g.strip()) for g in values["ui_paths"].split(",") if g.strip()]
-    return [f for f in files if any(p.match(f) for p in patterns)]
+    """The files that count as UI: those matching a glob of `ui_paths` and no `!glob` of it. Empty means none."""
+    globs = [g.strip() for g in values["ui_paths"].split(",") if g.strip()]
+    keep = [glob_re(g) for g in globs if not g.startswith("!")]
+    drop = [glob_re(g[1:].strip()) for g in globs if g.startswith("!")]
+    return [f for f in files if any(p.match(f) for p in keep) and not any(p.match(f) for p in drop)]
 
 
 def main() -> None:

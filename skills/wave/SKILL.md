@@ -54,10 +54,11 @@ Yours to do, never a worker's.
 1. **Account for everyone.** Each worker you launched is done, replaced or absorbed into another. One that never
    reported is a finding, not an absence.
 2. **Validate.** A report is not evidence. For each `READY_FOR_INTEGRATOR`, in its worktree at the PR's head, run
-   `ticket`'s `scripts/check <ticket> --pr <number>` yourself (add `--surface <name>` when the ticket names where it
+   `ticket`'s `scripts/check <ticket> --pr <number> --integrating` yourself (add `--surface <name>` when the ticket names where it
    must work) and rerun the check that `Done when:` names. The diff
    stays inside `Touches:`; list every file outside. A criterion the worker rewrote is the operator's decision,
-   never met. A high-risk or user-visible change with no `Review:` line for this patch gets `review`, run by you.
+   never met. A high-risk or user-visible change gets `review` started by you, a fresh session with only the issue,
+   the criteria and the diff, even when the worker's own review approved it: theirs does not count for the merge.
    For `INTEGRATED`, confirm the merge commit is on the integration branch. Write down what nobody verified.
 3. **Decide each one.** Send it back to a fresh worker with the failing line of `check` (a ticket sent back twice
    goes into the question instead), leave it ready with the reason, or offer to merge it. Merging what a worker

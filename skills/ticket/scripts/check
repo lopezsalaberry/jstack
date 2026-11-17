@@ -39,9 +39,11 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import re
 import subprocess
 import sys
+import time
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
 
@@ -153,7 +155,11 @@ def main(argv: list[str]) -> int:
         say("FAIL" if problem else "PASS", "proof", problem or f"{len(targets)} target(s), {checklist.relative_to(root)}")
         named = re.search(r"(?m)^Required surface:[ \t]*(.*)$", checklist.read_text())
         surface = (args.surface or (named.group(1) if named else "")).strip()
-        if surface.lower() not in ("", "none", "-"):
+        later = re.fullmatch(r"(.+?)\s+after merge", surface, re.I)
+        if later:
+            say("SKIP", "surface", f"{later.group(1)} is proven after the merge, by whoever owns it: say so in the PR under "
+                "\"Not in this change\", with what the build or the closest run showed")
+        elif surface.lower() not in ("", "none", "-"):
             there = [t for t, result, level, where in targets if result == "PASS" and level == "5" and where == surface.lower()]
             say("PASS" if there else "FAIL", "surface",
                 f"{len(there)} target(s) proven on {surface}" if there else
@@ -179,8 +185,13 @@ def main(argv: list[str]) -> int:
     if not args.pr:
         say("SKIP", "pull request", "pass --pr N to check the PR's head, screenshot, review, CI and mergeability")
     else:
-        view = subprocess.run(["gh", "pr", "view", args.pr, "--json", "body,comments,statusCheckRollup,mergeable,reviewDecision,headRefOid"],
-                              cwd=root, capture_output=True, text=True, env=settings.gh_env(root, remote))
+        # GitHub answers UNKNOWN for a few seconds after a push or a base change: ask again before calling it a blocker.
+        for wait in (0, *[float(os.environ.get("JSTACK_MERGEABLE_WAIT", "4"))] * 3):
+            time.sleep(wait)
+            view = subprocess.run(["gh", "pr", "view", args.pr, "--json", "body,comments,statusCheckRollup,mergeable,reviewDecision,headRefOid"],
+                                  cwd=root, capture_output=True, text=True, env=settings.gh_env(root, remote))
+            if view.returncode != 0 or json.loads(view.stdout).get("mergeable") != "UNKNOWN":
+                break
         if view.returncode != 0:
             say("FAIL", "pull request", f"gh pr view {args.pr} failed: {view.stderr.strip() or 'no output'}")
         else:
@@ -205,7 +216,7 @@ def main(argv: list[str]) -> int:
             # patch: a FAIL that was fixed, or the author's review before the integrator's round, no longer decides.
             # Of the lines on this patch, the last one of each starter (author, integrator) is that reviewer's verdict.
             parsed = []
-            for line in re.findall(r"(?m)^Review:.*$", body):
+            for line in re.findall(r"(?m)^(?:[-*][ \t]+)?Review:.*$", body):
                 verdict = re.search(r"\bverdict\s+([A-Z+]+)", line)
                 patch = re.search(r"\bpatch\s+([0-9a-f]{7,40})", line)
                 who = re.search(r"\bstarted by\s+(\w+)", line)

@@ -742,7 +742,7 @@ def _fake_gh(tmp_path, pr):
         "if a[:2] == ['pr', 'view']:\n    print(data['body'] if '-q' in a else json.dumps(data))\n"
         "elif a[:2] == ['pr', 'edit']:\n    (base / 'gh-edited.txt').write_text(pathlib.Path(a[a.index('--body-file') + 1]).read_text())\n")
     (bin_dir / "gh").chmod(0o755)
-    return {"PATH": f"{bin_dir}:{os.environ['PATH']}"}
+    return {"PATH": f"{bin_dir}:{os.environ['PATH']}", "JSTACK_MERGEABLE_WAIT": "0"}
 
 
 WEB = "https://example.test/o/r"
@@ -938,6 +938,8 @@ def test_check_reads_the_pull_request_head_screenshot_review_ci_and_mergeability
     assert "no `patch <id>`" in check(shown + "Review: verify by me | verdict PASS\n")[1]["FAIL review"], "a verdict tied to nothing"
     assert "PASS screenshot" in check('<img width="300" src="https://github.com/user-attachments/assets/abc-123">\n**Not shown:** x\n' + review)[1]
     assert "has not said yet" in check(shown + review, mergeable="UNKNOWN")[1]["FAIL mergeable"]
+    # Open Training's PR template lists the line as a bullet; check read only a bare `Review:` and said FAIL review.
+    assert "PASS review" in check(shown + "- " + review)[1], "a `- Review:` bullet is the same verdict"
     assert "failed: ci" in check(shown + review, statusCheckRollup=[{"name": "ci", "status": "COMPLETED", "conclusion": "FAILURE"}])[1]["FAIL ci"]
     assert "still running" in check(shown + review, statusCheckRollup=[{"name": "ci", "status": "IN_PROGRESS", "conclusion": None}])[1]["FAIL ci"]
     assert "SKIP ci" in check(shown + review, statusCheckRollup=[])[1]
@@ -1140,6 +1142,9 @@ def test_a_ticket_that_names_a_surface_is_not_done_until_it_is_proven_there(tmp_
     assert code == 0 and "1 target(s) proven on ios-safari" in lines["PASS surface"], out
     other = run([CHECK, "T-1", "--base", "main", "--surface", "android-chrome"], cwd=r)
     assert other.returncode == 1 and "must be proven on android-chrome" in other.stdout, "whoever validates can name the surface"
+    # Open Training, 2026-11-16: the iPhone row could only be the owner's phone after the merge, and check had no way to say so.
+    later = run([CHECK, "T-1", "--base", "main", "--surface", "iphone after merge"], cwd=r)
+    assert later.returncode == 0 and "SKIP surface: iphone is proven after the merge" in later.stdout, later.stdout
 
 
 def test_no_surface_line_appears_when_the_ticket_names_none(tmp_path):
@@ -1183,6 +1188,39 @@ def test_a_fork_whose_origin_is_upstream_publishes_and_branches_from_its_own_rem
     assert "branch from private/open-training" in text and "`check T-7 --pr <number>`" in text, "check reads `remote` itself"
 
 
+def test_github_is_asked_again_while_it_has_not_decided_whether_the_pr_can_merge(tmp_path):
+    # Open Training: check said "mergeable unknown" right after a push, and the integrator ran it again by hand.
+    r = _proven_ticket(tmp_path, file="server/api.py", text="x = 1\n")
+    _row(r, "| the api answers | PASS | 4 | ran the test | after.txt |")
+    env = _pr_for(r, tmp_path, "Fixes it.")
+    gh = Path(env["PATH"].split(":")[0]) / "gh"
+    gh.write_text(gh.read_text().replace("data = json.loads((base / 'gh-pr.json').read_text())\n",
+        "data = json.loads((base / 'gh-pr.json').read_text())\nn = base / 'gh-asked'\nasked = int(n.read_text()) if n.exists() else 0\n"
+        "n.write_text(str(asked + 1))\ndata['mergeable'] = 'UNKNOWN' if asked < 2 else 'MERGEABLE'\n"))
+    code, lines, out = _check(r, "--pr", "7", env=env)
+    assert code == 0 and "PASS mergeable" in lines and (tmp_path / "gh-asked").read_text() == "3", out
+
+
+def test_proof_valid_stamps_against_the_integration_branch_the_settings_name(tmp_path):
+    # Open Training, 2026-11-15: a worker stamped without --base, got upstream's main, and check saw another patch.
+    r = repo(tmp_path, "# P\n\n## jstack settings\nremote: private\nintegration_branch: dev\n")
+    bare = tmp_path / "private.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(bare)], check=True, capture_output=True)
+    git(r, "remote", "add", "private", str(bare))
+    git(r, "checkout", "-q", "-b", "dev")
+    (r / "dev.txt").write_text("only on dev\n")
+    git(r, "add", "-A")
+    git(r, "commit", "-q", "-m", "dev moves ahead of main")
+    git(r, "push", "-q", "private", "dev")
+    git(r, "checkout", "-q", "-b", "feat")
+    (r / "x.py").write_text("x = 1\n")
+    git(r, "add", "-A")
+    git(r, "commit", "-q", "-m", "change")
+    plain = run([PROOFVALID, "--print"], cwd=r).stdout
+    named = run([PROOFVALID, "--print", "--base", "private/dev"], cwd=r).stdout
+    assert plain == named, (plain, named)
+
+
 def test_brief_takes_the_settings_the_integration_branch_has_not_the_checkouts(tmp_path):
     # Open Training, 2026-11-15: the orchestrator ran brief on its program branch, whose AGENTS.md was older, and the
     # first worker of the new settings was told origin/open-training and ui_paths without the exclusion.
@@ -1197,6 +1235,12 @@ def test_brief_takes_the_settings_the_integration_branch_has_not_the_checkouts(t
     git(r, "fetch", "-q", "origin")
     done = _brief(r, "--touches", "app/screen.css", "--model", "m", "--effort", "low")
     assert "Design: this ticket touches UI files" in done.stdout and "settings from AGENTS.md on origin/main" in done.stderr, done.stderr
+    # 2026-11-15, OT-4-077: the program branch had no `remote` line, origin (upstream) has no integration branch, and
+    # brief fell back to the checkout's copy. The remote that has the branch holds the settings.
+    git(r, "remote", "rename", "origin", "private")
+    git(r, "remote", "add", "origin", str(tmp_path / "nowhere.git"))
+    done = _brief(r, "--touches", "app/screen.css", "--model", "m", "--effort", "low")
+    assert "settings from AGENTS.md on private/main" in done.stderr, done.stderr
 
 
 def test_check_runs_a_repos_own_design_command_as_the_shell_line_it_is(tmp_path):

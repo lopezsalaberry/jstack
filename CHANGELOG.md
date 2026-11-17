@@ -2,9 +2,21 @@
 
 Format follows Keep a Changelog. Versions are tagged `vX.Y.Z`; install a tag, not `main`.
 
-## Unreleased (trial in Open Training)
+## 1.0.0 (2026-11-17)
 
-Four findings from a day of real tickets in Open Training (2026-11-14), each with its reproduction as a test.
+Lean: the same premises with a third of the text, tried for three days on real tickets in Open Training (2026-11-14 to
+2026-11-17, about 50 issues) before it replaced 0.10.3. Every friction the trial found is fixed with its reproduction
+as a test.
+
+### Fixed (third day, 2026-11-17)
+- `check` reads a `Review:` line written as a list item (`- Review: ...`), as the PR template shows it.
+- `check` asks GitHub again for a few seconds while it says it does not know yet whether the PR can merge.
+- `check --surface "<name> after merge"` skips the surface when only its owner can reach it (their own phone); the PR
+  says what the closest run showed. Open Training had to merge past a FAIL it could not resolve.
+- `proof-valid` stamps against `<remote>/<integration_branch>` from the settings when no `--base` is given. A worker
+  in a fork stamped against upstream's default branch and `check` compared another patch.
+- `brief` looks for the integration branch on every remote when the checkout's settings name the wrong one.
+- `review`: the reviewer does not stop processes it did not start (one killed every `node server.js` on the machine).
 
 ### Changed
 - `review`: when someone other than the author merges, the review that counts is the one the integrator starts, in a
@@ -30,7 +42,7 @@ Four findings from a day of real tickets in Open Training (2026-11-14), each wit
   `origin` is upstream names its own, and `check` and `publish` point `gh` at that repo (a `GH_REPO` the caller set wins).
 - `ui_paths` takes `!glob` entries out: `frontend/src/**, !frontend/src/lib/**` no longer asks a logic change for screenshots.
 
-## 1.0.0
+### The redesign
 
 The same premises with a third of the text. Measured before this: in 143 sessions, the tools that are one command were
 used (`checklist-init` in 74, `proof-valid` in 64) and the rules that were only prose mostly were not (`RUNSTATE.md` in

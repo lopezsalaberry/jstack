@@ -18,7 +18,8 @@ with the one recorded when the proof was made.
                `checklist-init` runs before the change exists, so it can only record an empty patch; a
                checklist that still records one is refused by --checklist (exit 2), never called valid.
 
-BASE defaults to the remote's default branch (origin/HEAD), then origin/main, main, master.
+BASE defaults to <remote>/<integration_branch> from the repo's settings, then the remote's default branch
+(origin/HEAD), then origin/main, main, master.
 A proof whose revision is already part of BASE has landed: the change is no longer a patch over BASE,
 so there is nothing left to compare and the proof stands. (A squash merge rewrites the commit, so a
 squashed change is not recognised this way; compare before merging.)
@@ -43,6 +44,22 @@ def git(*args: str, input: str | None = None, check: bool = True) -> str:
 
 
 def default_base() -> str:
+    # The repo's own integration branch first (`remote` and `integration_branch` in AGENTS.md): in a fork the remote's
+    # default branch is upstream's, and a stamp against it is a different patch from the one `check` compares.
+    try:
+        from importlib.machinery import SourceFileLoader
+        import importlib.util
+        here = Path(__file__).resolve().parent
+        loader = SourceFileLoader("jstack_settings", str(here.parents[1] / "jstack" / "scripts" / "jstack-settings"))
+        settings = importlib.util.module_from_spec(importlib.util.spec_from_loader("jstack_settings", loader))
+        loader.exec_module(settings)
+        root = Path(git("rev-parse", "--show-toplevel").strip())
+        values = settings.resolve(root)
+        ref = f"{values['remote']}/{values['integration_branch']}"
+        if values["integration_branch"] and subprocess.run(["git", "rev-parse", "--verify", "-q", ref], capture_output=True).returncode == 0:
+            return ref
+    except Exception:  # no settings to read: fall back to the remote's default branch
+        pass
     head = git("symbolic-ref", "--short", "refs/remotes/origin/HEAD", check=False).strip()
     if head:
         return head

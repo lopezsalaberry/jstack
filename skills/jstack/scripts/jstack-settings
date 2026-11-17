@@ -110,10 +110,14 @@ def resolve_integrated(repo: Path, env: dict[str, str] | None = None) -> tuple[d
     orchestrator's program branch) may carry an older `AGENTS.md`; what a worker is told must not depend on that."""
     here = resolve(repo, env)
     ref = f"{here['remote']}/{here['integration_branch']}"
-    shown = subprocess.run(["git", "-C", str(repo), "show", f"{ref}:AGENTS.md"], capture_output=True, text=True)
-    if shown.returncode != 0:
-        return here, f"this checkout's AGENTS.md ({ref} has none or is not fetched)"
-    return resolve(repo, env, block_text(shown.stdout)), f"AGENTS.md on {ref}"
+    remotes = subprocess.run(["git", "-C", str(repo), "remote"], capture_output=True, text=True).stdout.split()
+    # This checkout may not name the remote at all (its AGENTS.md predates the `remote` line): try the others too.
+    for name in [here["remote"]] + [r for r in remotes if r != here["remote"]]:
+        tried = f"{name}/{here['integration_branch']}"
+        shown = subprocess.run(["git", "-C", str(repo), "show", f"{tried}:AGENTS.md"], capture_output=True, text=True)
+        if shown.returncode == 0:
+            return resolve(repo, env, block_text(shown.stdout)), f"AGENTS.md on {tried}"
+    return here, f"this checkout's AGENTS.md ({ref} has none or is not fetched)"
 
 
 def glob_re(glob: str) -> re.Pattern:

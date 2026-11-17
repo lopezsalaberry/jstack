@@ -128,7 +128,7 @@ MUTATIONS = {
         "skills/ticket/scripts/check", 'if result == "PASS" and level == "5" and where == surface.lower()]', 'if result == "PASS"]',
         "tests/test_tools.py::test_a_ticket_that_names_a_surface_is_not_done_until_it_is_proven_there"),
     "the required surface is never checked": (
-        "skills/ticket/scripts/check", '        if surface.lower() not in ("", "none", "-"):', "        if False:",
+        "skills/ticket/scripts/check", '        elif surface.lower() not in ("", "none", "-"):', "        if False:",
         "tests/test_tools.py::test_a_ticket_that_names_a_surface_is_not_done_until_it_is_proven_there"),
     "a brief drops the surface": (
         "skills/wave/scripts/brief", "    if args.surface.strip():\n        lines.append(", "    if False:\n        lines.append(",

@@ -55,7 +55,7 @@ If nothing can start at all, report `WAITING` until a probe passes. That is the 
 Break:
 
 ```
-Break this change. Do not edit the repo, commit, push, comment or start other agents.
+Break this change. Do not edit the repo, commit, push, comment, start other agents or stop processes you did not start.
 Repo: <path> Base: <sha> Intent: <intent> Out of scope: <scope> Checks: <results>   See: git diff <base>
 Prove each finding by running the real code: a failing test, a script, or command output that shows the wrong
 behavior. Keep scratch files outside the repo. Report only what you ran. No style, no nits, no hypotheticals.
@@ -67,7 +67,7 @@ What you could not run (auth, credentials, concurrency you cannot reproduce): li
 Verify:
 
 ```
-Do not edit the repo, commit, push, comment or start other agents.
+Do not edit the repo, commit, push, comment, start other agents or stop processes you did not start.
 Repo: <path> Base: <sha> Head: <sha> Intent: <intent> Acceptance criteria: <list>
 Use this change the way a user would, on the delivered artifact (the project's verify-<app> skill if it has one),
 base against head, on this surface: <the one the ticket names, or the repo's main one>. For each criterion give the steps and what you saw. If it touches the UI, compare the screens

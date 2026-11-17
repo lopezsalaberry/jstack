@@ -72,11 +72,12 @@ def default_base() -> str:
 
 def patch_id(base: str, ref: str = "HEAD") -> str:
     fork = git("merge-base", base, ref).strip()
-    diff = git("diff", fork, ref)
+    # Bytes, not text: a change may hold a file that is not UTF-8 (Latin-1 copy, a binary git takes for text).
+    diff = subprocess.run(["git", "diff", fork, ref], capture_output=True, check=True).stdout
     if not diff.strip():
         return "empty"
-    out = git("patch-id", "--stable", input=diff).split()
-    return out[0] if out else "empty"
+    out = subprocess.run(["git", "patch-id", "--stable"], input=diff, capture_output=True, check=True).stdout.split()
+    return out[0].decode() if out else "empty"
 
 
 UNANCHORED = ("empty", "?")

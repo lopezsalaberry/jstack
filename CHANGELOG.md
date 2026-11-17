@@ -2,6 +2,12 @@
 
 Format follows Keep a Changelog. Versions are tagged `vX.Y.Z`; install a tag, not `main`.
 
+## 1.0.1 (2026-11-17)
+
+### Fixed
+- `proof-valid` (and so `checklist-init` and `check`) reads the change as bytes: a file that is not UTF-8
+  in the change crashed it with `UnicodeDecodeError`. Seen in a draft repo with a Latin-1 file.
+
 ## 1.0.0 (2026-11-17)
 
 Lean: the same premises with a third of the text, tried for three days on real tickets in Open Training (2026-11-14 to

@@ -340,6 +340,16 @@ def test_proof_follows_the_patch_not_the_commit(tmp_path):
     assert stale.returncode == 1 and "prove again" in stale.stdout, "a real edit must invalidate it"
 
 
+def test_proof_valid_reads_a_change_whose_text_is_not_utf8(tmp_path):
+    """2026-11-17, Vairom draft repo: a Latin-1 file in the change crashed checklist-init with UnicodeDecodeError."""
+    r = repo(tmp_path)
+    git(r, "checkout", "-q", "-b", "feat")
+    (r / "latin1.txt").write_bytes("caf\xe9 con le\xf1a\n".encode("latin-1"))
+    commit_all(r)
+    out = run([PROOFVALID, "--print", "--base", "main"], cwd=r)
+    assert out.returncode == 0 and "Traceback" not in out.stderr, out.stderr
+
+
 def test_proof_valid_refuses_a_checklist_that_names_no_patch(tmp_path):
     r = repo(tmp_path)
     checklist = tmp_path / "c.md"

@@ -11,7 +11,7 @@ One ticket, one branch, one pull request. The scripts named here are in this ski
 "Full send" means nobody is watching: you own the work up to the merged PR, you may merge when the gate is green,
 force-push this PR's own branch with `--force-with-lease`, and use whatever test method the proof needs (browser,
 simulator, dev server, screenshots) even if a project file says to ask first. Never production, data deletion or
-anything outside the repo. A worker started by `wave` is in full send and never asks: see "Asking".
+anything outside the repo.
 
 ## 1. Start
 
@@ -27,8 +27,8 @@ anything outside the repo. A worker started by `wave` is in full send and never 
 
 ## 2. Change
 
-The smallest change that fixes the case that happened, not every case that could. For a bug, reproduce the failure
-first and save its output as `.artifacts/<ticket>/before.txt`. Commit the failing test before the fix when the repo
+The smallest change that fixes the case that happened, not every case that could. For a bug, before you guess at
+the cause, get one command that fails on it and save its output as `.artifacts/<ticket>/before.txt`. Commit the failing test before the fix when the repo
 has a cheap way to test it.
 
 ## 3. Prove

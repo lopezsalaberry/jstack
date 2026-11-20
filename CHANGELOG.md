@@ -2,6 +2,12 @@
 
 Format follows Keep a Changelog. Versions are tagged `vX.Y.Z`; install a tag, not `main`.
 
+## Unreleased
+
+### Changed
+- `ticket`: for a bug, get one command that fails on it before guessing at the cause.
+- `CONTRIBUTING.md`: a change starts from a failure someone saw; rejected ideas go to `.out-of-scope/`, one file each.
+
 ## 1.0.1 (2026-11-17)
 
 ### Fixed

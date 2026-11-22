@@ -21,4 +21,5 @@ Remove the lines you do not need. Every key and its default is in the `jstack` s
 integration_branch: main
 ui_paths:
 design_tokens: design/tokens.json
+computer_use:
 ```

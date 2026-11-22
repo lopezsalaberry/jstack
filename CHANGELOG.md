@@ -4,6 +4,12 @@ Format follows Keep a Changelog. Versions are tagged `vX.Y.Z`; install a tag, no
 
 ## Unreleased
 
+### Added
+- `computer_use` setting, `ticket` guidance and `scripts/cu-check`: a repo whose surface is a native Mac app names the
+  command that drives it, and the ticket proves the change on the real app. Seen in a SoundHouse session (2026-11-22):
+  the app could not be driven, so the proof stayed a stand-in, and a blind coordinate click hit the agent's own
+  "Commit, push & PR" button. The `check` gate is unchanged.
+
 ### Changed
 - `ticket`: for a bug, get one command that fails on it before guessing at the cause.
 - `CONTRIBUTING.md`: a change starts from a failure someone saw; rejected ideas go to `.out-of-scope/`, one file each.

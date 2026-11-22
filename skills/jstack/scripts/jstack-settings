@@ -31,6 +31,7 @@ DEFAULTS = {
     # none of 8 on Opus, all hard logic (a dual write, matching sessions, reading free text).
     "routing": "the strongest model (Opus) for bug fixes, data or schema changes, parsers and anything that reads outside input, auth and security, concurrency, and every UI or UX change; the fast model (Sonnet) for mechanical edits, docs, and small features that follow an existing pattern and change no data",
     "max_parallel": "",
+    "computer_use": "",
     "quota_probe": shlex.quote(str(SKILLS / "wave" / "scripts" / "quota-probe")),  # a path may hold spaces
 }
 LINE = re.compile(r"^([a-z_]+):\s*(.*?)\s*$")

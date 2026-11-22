@@ -1,0 +1,75 @@
+#!/usr/bin/env python3
+"""cu-check: say whether this repo can drive a native app on a Mac before a ticket needs to.
+
+  cu-check [--repo PATH]
+
+Reads the `computer_use` setting: a command prefix that reaches a Mac's computer-use client, for example
+`ssh my-mac ~/.local/bin/cu`. The contract the command keeps:
+
+  <cmd> status                  exit 0 when a session can drive apps now, anything else when it cannot
+  <cmd> run --app A --code JS   drive that one app; exit 3 when the app was refused
+
+This script only runs `<cmd> status`. It never touches an app.
+
+  PASS  computer use: ready (<cmd>), then the rules below
+  SKIP  computer use: not set up (`computer_use` is empty)       the repo does not use it
+  FAIL  computer use: `<cmd> status` exited N                     set up, and not working
+
+Exit 0 on PASS and SKIP, 1 on FAIL, 2 on usage errors.
+"""
+from __future__ import annotations
+
+import argparse
+import importlib.machinery
+import importlib.util
+import shlex
+import subprocess
+import sys
+from pathlib import Path
+
+SETTINGS = Path(__file__).resolve().parents[2] / "jstack" / "scripts" / "jstack-settings"
+TIMEOUT = 60
+# Seen 2026-11-22: a blind coordinate click, made while the agent's own window was frontmost, pressed its
+# "Commit, push & PR" button. These rules are printed with a PASS so they are read when computer use is used.
+RULES = """Rules while you drive an app:
+  - one app per call, and only the app under test; never a terminal, the agent's own window, a browser, Finder,
+    system settings or a credentials app
+  - take a screenshot and confirm the app is frontmost before any click
+  - never click by coordinates through a script; use the app's own controls (accessibility labels, menu, keys)
+  - write what you saw into the checklist row, not what you sent; a declined app (exit 3) is `BLOCKED(env)`"""
+
+
+def setting(repo: Path) -> str:
+    loader = importlib.machinery.SourceFileLoader("jstack_settings", str(SETTINGS))
+    spec = importlib.util.spec_from_loader("jstack_settings", loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module.resolve(repo).get("computer_use", "")
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--repo", default=".")
+    args = ap.parse_args()
+    command = setting(Path(args.repo).resolve()).strip()
+    if not command:
+        print("SKIP computer use: not set up (`computer_use` is empty)")
+        return 0
+    try:
+        done = subprocess.run([*shlex.split(command), "status"], capture_output=True, text=True, timeout=TIMEOUT)
+    except FileNotFoundError:
+        print(f"FAIL computer use: `{command}` not found")
+        return 1
+    except subprocess.TimeoutExpired:
+        print(f"FAIL computer use: `{command} status` gave no answer in {TIMEOUT}s")
+        return 1
+    if done.returncode == 0:
+        print(f"PASS computer use: ready ({command})\n{RULES}")
+        return 0
+    last = (done.stderr.strip() or done.stdout.strip()).splitlines()[-1:] or [""]
+    print(f"FAIL computer use: `{command} status` exited {done.returncode} {last[0]}".rstrip())
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

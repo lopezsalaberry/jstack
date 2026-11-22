@@ -20,6 +20,7 @@ CHECK = ROOT / "skills/ticket/scripts/check"
 BRIEF = ROOT / "skills/wave/scripts/brief"
 PUBLISH = ROOT / "skills/ticket/scripts/publish"
 TEMPLATE = ROOT / "templates/AGENTS.md"
+CUCHECK = ROOT / "skills/ticket/scripts/cu-check"
 
 
 def run(cmd, cwd=None, env=None, timeout=60):
@@ -1267,3 +1268,33 @@ def test_check_runs_a_repos_own_design_command_as_the_shell_line_it_is(tmp_path)
     git(r, "commit", "-q", "-am", "failing design check")
     _row(r, "| the button is blue | PASS | 4 | ran the page | after.txt | |")
     assert "FAIL design" in _check(r)[1]
+
+
+# --- computer use -----------------------------------------------------------
+
+def test_cu_check_skips_when_unset_passes_when_ready_and_fails_when_the_command_does(tmp_path):
+    """2026-11-22 (SoundHouse): a ticket on a native Mac app could not drive it and the proof stayed a stand-in.
+    The check runs only `<cmd> status`; the fake command records what it was asked."""
+    fake = tmp_path / "fake-cu"
+    fake.write_text("#!/bin/sh\necho \"$@\" >> \"$0.calls\"\n[ \"$1\" = status ] || exit 9\n[ -f \"$0.down\" ] && { echo 'daemon: down' >&2; exit 6; }\nexit 0\n")
+    fake.chmod(0o755)
+    r = repo(tmp_path, "# P\n\n## jstack settings\ncomputer_use:\n")
+    off = run([CUCHECK, "--repo", r], cwd=tmp_path)
+    assert off.returncode == 0 and off.stdout.startswith("SKIP computer use: not set up")
+    (r / "AGENTS.md").write_text(f"# P\n\n## jstack settings\ncomputer_use: {fake}\n")
+    ok = run([CUCHECK, "--repo", r], cwd=tmp_path)
+    assert ok.returncode == 0 and ok.stdout.startswith("PASS computer use: ready")
+    assert "never click by coordinates" in ok.stdout and "confirm the app is frontmost" in ok.stdout
+    assert (tmp_path / "fake-cu.calls").read_text().split() == ["status"], "it must never drive an app"
+    Path(f"{fake}.down").write_text("")
+    bad = run([CUCHECK, "--repo", r], cwd=tmp_path)
+    assert bad.returncode == 1 and "FAIL computer use:" in bad.stdout and "exited 6 daemon: down" in bad.stdout
+    (r / "AGENTS.md").write_text("# P\n\n## jstack settings\ncomputer_use: /nonexistent/cu\n")
+    gone = run([CUCHECK, "--repo", r], cwd=tmp_path)
+    assert gone.returncode == 1 and "not found" in gone.stdout
+
+
+def test_the_ticket_skill_and_the_settings_table_name_computer_use():
+    assert "`computer_use`" in (ROOT / "skills/jstack/SKILL.md").read_text()
+    guide = (ROOT / "skills/ticket/SKILL.md").read_text()
+    assert "cu-check" in guide

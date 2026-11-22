@@ -36,6 +36,7 @@ environment `JSTACK_<KEY>`, then the repo, then the operator's file, then the de
 | `reviewer_models` | `auto` | Ordered preference for `review`: `provider:model`, a bare `provider`, or `auto` (anything the harness can start, other families first). `provider-a, provider-b, auto` means the first that has quota, then a fresh session of whatever is left |
 | `routing` | strongest model for bug fixes, data, parsers, auth, concurrency and UI; fast model for mechanical edits, docs and small features on an existing pattern | Free text the orchestrator reads when it picks a model for a ticket: what to prefer for which kind of work. A suggestion, not a rule. `routing:` with nothing after it turns the default off |
 | `max_parallel` | empty | Cap on workers at once. Empty: quota alone limits |
+| `computer_use` | empty | Command prefix for a Mac's computer-use client, e.g. `ssh my-mac ~/.local/bin/cu`; `ticket` drives a native app with it, `scripts/cu-check` checks it. Contract: `<cmd> status` exits 0 when ready; `<cmd> run --app A --code JS` exits 3 when the app is refused. Empty: not used |
 | `quota_probe` | the probe shipped with `wave` | A command that answers `--provider <name>` with exit 0 (has quota), 1 (none) or 2 (no data). Callers always run `wave`'s `scripts/quota-probe`, which keeps the refusal marks and asks this command for the reading |
 
 ## Actions

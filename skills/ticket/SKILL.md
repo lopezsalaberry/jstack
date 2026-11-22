@@ -21,7 +21,7 @@ anything outside the repo.
 3. `scripts/checklist-init <ticket>`, before the first edit. Write each thing the ticket asks for as a row: a
    statement someone could test, such as "it saves the note and shows it in the list".
 4. A UI ticket (it touches `ui_paths`, see `jstack`): read the design sources (`design_tokens`, the project's
-   components and screens) and capture `before-<state>.png` of each screen you will change, now, while it is
+   components and screens) and capture `before-<state>.png` of each screen you will change while it is
    still the old one. If the design system lacks something the ticket needs, stop with `BLOCKED(decision)` naming
    the missing piece. Extending the design system is its own ticket and goes first.
 
@@ -47,7 +47,7 @@ Only 4 and 5 are `PASS`. Below that write "unproven (level N)".
   internals. Test every case the ticket names (each language, each state), not one of them. Never change a test to
   match a wrong implementation.
 - UI: capture `after-<state>.png` for each `before-`, at the sizes the app supports. Look at every capture: nothing
-  cut off, nothing truncated. Compare with the design source and list each mismatch. A mismatch you cannot resolve
+  cut off or truncated. Compare with the design source and list each mismatch. A mismatch you cannot resolve
   is `BLOCKED(decision)` with the capture beside the design.
 
 **Prove it where it has to work.** When the ticket names a device, a browser or the packaged app, that is the
@@ -55,6 +55,8 @@ surface: `checklist-init <ticket> --surface <name>`, reach it as the repo's `ver
 row at level 5. Proof elsewhere is a stand-in: it does not pass. Cannot reach it: `BLOCKED(env)` with what you
 tried, never a quiet switch to another surface. Only its owner can reach it: the integrator passes `--surface "<name> after merge"`
 and the PR says what the closest run showed.
+
+**A native Mac app:** use `computer_use`; `scripts/cu-check` prints its rules. Unset or `FAIL`: `BLOCKED(env)`.
 
 Fill the checklist: one row per target with `PASS` or `FAIL`, the level, what you saw, the file and the surface. A target you
 could not exercise is `FAIL`. Never weaken a target to pass it. Save the passing output of a bug fix as `after.txt`.

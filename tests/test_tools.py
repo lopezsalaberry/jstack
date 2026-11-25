@@ -170,15 +170,17 @@ def test_until_marks_a_provider_for_as_long_as_its_refusal_lasts(tmp_path):
     assert run([PROBE, "--provider", "cursor"], cwd=tmp_path, env=marks).returncode == 1
     far = time.strftime("%Y-%m-%d", time.localtime(time.time() + 400 * 86400))            # a mistyped year
     for text, why in (("2020-01-01", "already past"), (far, "days away"), ("tomorrow-ish", "not an ISO")):
-        bad = run([PROBE, "--mark-exhausted", "x", "--until", text], cwd=tmp_path, env=marks)
+        bad = run([PROBE, "--mark-exhausted", "x", "--until", text, "--reason", "cap"], cwd=tmp_path, env=marks)
         assert bad.returncode == 64 and why in bad.stderr, (text, bad.stderr)   # 64, never the 2 that means "unknown"
+    bare = run([PROBE, "--mark-exhausted", "x", "--until", later], cwd=tmp_path, env=marks)
+    assert bare.returncode == 64 and "--reason" in bare.stderr, "2026-11-22: Cursor was marked out until 1 Dec for a harness fault, with no stated cause"
     both = run([PROBE, "--mark-exhausted", "x", "--minutes", "5", "--until", later], cwd=tmp_path, env=marks)
     assert both.returncode == 64 and "exclusive" in both.stderr
-    epoch = run([PROBE, "--mark-exhausted", "y", "--until", str(int(time.time()) + 7200)], cwd=tmp_path, env=marks)
+    epoch = run([PROBE, "--mark-exhausted", "y", "--until", str(int(time.time()) + 7200), "--reason", "cap"], cwd=tmp_path, env=marks)
     assert epoch.returncode == 0, "epoch seconds are accepted too"
     assert run([PROBE, "--mark-exhausted", "z"], cwd=tmp_path, env=marks).stdout.strip().endswith("for 60 min")
     next_reset = time.strftime("%Y-%m-%d", time.localtime(time.time() + 48 * 86400))      # a reset on the 1st, 48 days out
-    assert run([PROBE, "--mark-exhausted", "w", "--until", next_reset], cwd=tmp_path, env=marks).returncode == 0
+    assert run([PROBE, "--mark-exhausted", "w", "--until", next_reset, "--reason", "cap"], cwd=tmp_path, env=marks).returncode == 0
 
 
 def test_reviewer_models_defaults_to_auto_and_the_preference_syntax_parses(tmp_path):

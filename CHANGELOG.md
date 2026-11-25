@@ -12,6 +12,8 @@ Format follows Keep a Changelog. Versions are tagged `vX.Y.Z`; install a tag, no
 
 ### Changed
 - `ticket`: for a bug, get one command that fails on it before guessing at the cause.
+- `review`: a harness that cannot start a provider is a start fault, not exhaustion: it is never marked, and the provider's own CLI runs headless first (Cursor's command is in the skill). The review line says "via cli".
+- `quota-probe`: `--until` needs `--reason`. A reviewer was marked out until 1 Dec for a start fault, with no stated cause, and no review used a second provider after 20 Nov.
 - `CONTRIBUTING.md`: a change starts from a failure someone saw; rejected ideas go to `.out-of-scope/`, one file each.
 
 ## 1.0.1 (2026-11-17)

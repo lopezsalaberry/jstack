@@ -19,9 +19,7 @@ other agents. Nits never start a second round.
 **Who starts it.** When someone other than the author merges (an orchestrator, a wave's integrator), the review that
 counts is the one the integrator starts, after the worker reports ready, in a fresh session that gets only the issue,
 the criteria and the diff, never the author's account of it. A review the author started is the author's own check:
-keep it, it finds real defects cheaply, but it does not let the change merge. Measured on 2026-11-14: three times out
-of three, a fresh integrator review found defects (one that let a token delete another user's data) that the
-author's review had approved.
+keep it, it finds real defects cheaply, but it does not let the change merge.
 
 ## 1. Before you ask
 
@@ -39,14 +37,16 @@ needs a different pair of eyes, not the strongest model.
 1. **Probe, then start.** For each candidate run the `wave` skill's `scripts/quota-probe --provider <provider>`.
    Exit 1: skip it. Exit 0 or 2: start it, naming its model and effort. A list of models says what can start, not
    what has quota.
-2. **Two minutes.** Do not end your turn. If it refuses (quota, rate limit, authentication, unavailable) or shows
-   nothing in 2 minutes, stop it, run `scripts/quota-probe --mark-exhausted <provider>` (add `--until <date>` when
-   the refusal names when it comes back) and take the next candidate at once.
+2. **Two minutes.** Do not end your turn. If it refuses or shows nothing in 2 minutes, stop it. Silence, or an error
+   naming quota, rate limit or authentication: run `scripts/quota-probe --mark-exhausted <provider>` (add
+   `--until <date>` and `--reason` when the refusal names its end) and take the next candidate at once.
+   Any other error is a harness start fault: never mark it; run the provider's own CLI headless
+   (`docs/TROUBLESHOOTING.md`), and move on only if that fails too.
 3. **Never stop to ask which provider to use** while a candidate is left. The list is the operator's permission
    to fall through it, and no remembered preference overrides it.
 4. **Say how independent it was**, the best level any candidate gave: **L1** another model family; **L2** another
    model of the author's family; **L3** a fresh session of any model that sees only the diff and the criteria. L3
-   is there whenever any model can start. If the harness does not say the family, write "family unknown".
+   is there whenever any model can start. If the harness does not say the family, write "family unknown"; if you ran a CLI, add "via cli".
 
 If nothing can start at all, report `WAITING` until a probe passes. That is the only wait.
 

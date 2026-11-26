@@ -5,15 +5,14 @@ description: "Run several tickets at once, one worker each, then validate what t
 
 # Wave
 
-Run by the session the operator talks to. You run the program, not the code: you decide who does each ticket and
-you check what comes back. The scripts named here are in this skill's `scripts/` folder.
+Run by the session the operator talks to. You run the program, not the code: you decide who does each ticket and check what comes back. The scripts named here are in this skill's `scripts/` folder.
 
 ## Queue
 
 Ready tickets from the project's tracker, each with a goal, `Touches:` (the files it expects to change) and an
-observable `Done when:`. Write a missing one from the code before launch. One worker per ticket and one level deep:
+observable `Done when:`. Write a missing one before launch. One worker per ticket and one level deep:
 a worker starts no workers, only the reviewer of `review`. Tickets whose files overlap run one after the other;
-a ticket with no `Touches:` runs alone. One ticket is a wave of one.
+a ticket with no `Touches:` runs alone.
 
 At the start of a session run `scripts/wave-status`, list the open PRs and relaunch what is `WAITING` before you
 pick new work.
@@ -21,20 +20,21 @@ pick new work.
 ## Launch
 
 1. **Quota.** `scripts/quota-probe --provider <provider>` before every launch. Exit 1: not that provider. Exit 0
-   or 2: go; 2 means no data, which is not exhaustion, so write "quota unknown" and carry on. A reading from earlier
+   or 2: go; 2 means no data, which is not exhaustion, so write "quota unknown". A reading from earlier
    in the session is not data.
 2. **Model and effort.** You choose for each ticket, from what the harness can start (see `jstack`) and the
-   operator's suggestions in `routing`; depart from a suggestion only with a reason you write down. Quota says
-   which providers are available, never which model suits the work: do not move work around to even out usage.
-   Effort starts from your session's level: one step up for the hardest work, one or two down for routine edits.
+   operator's suggestions in `routing`; depart from one only with a reason you write down; your own provider needs none. If you are not a Claude model, workers start on your
+   provider unless the operator's request or a `routing` rule written "always" names another; a Claude preference
+   is not one. Quota says which providers are available, never which model suits the work: do not move work around to even out usage.
+   Effort, in the provider's own term, starts from your session's level: a step up for the hardest work, lower for routine edits.
 3. **Brief.** `scripts/brief <ticket> --goal … --done-when … --touches … --model … --effort …` prints the brief
    (`--surface <name>` when the ticket names a device, a browser or the packaged app).
-   Start one background worker with it through the harness's delegate action, on that model and effort. A
-   delegate that is not told its model inherits yours. `max_parallel` caps how many run; otherwise quota does.
-4. **A refusal is data.** If the start fails for quota, rate limit, authentication or availability, or shows
-   nothing in 2 minutes, run `scripts/quota-probe --mark-exhausted <provider>` (`--until <date>` when the refusal
-   names when it comes back) and relaunch the ticket at once on the next provider that passes. On HTTP 429 halve
-   the number running and climb back one at a time.
+   Start one worker with it through the harness's delegate action, on that model and effort. A
+   delegate that is not told its model inherits yours. `max_parallel` caps how many run.
+4. **A refusal is data.** A start refused for quota, rate limit or authentication, or that shows nothing in 2 minutes:
+   run `scripts/quota-probe --mark-exhausted <provider>` (`--until <date>` and `--reason` when the refusal names its
+   end) and relaunch on the next provider that passes. Any other error is a start fault: never mark it; run its CLI headless (`docs/TROUBLESHOOTING.md`) first. On
+   HTTP 429 halve the number running and climb back one at a time.
 5. **The only wait.** When nothing can start, the ticket is `WAITING` until a probe passes. Never fail a ticket for
    quota. Pay-per-token routes are used only when the operator asks for them for that task.
 
@@ -43,9 +43,7 @@ pick new work.
 Launch the next ticket as each worker reports. `WAITING <condition>` is parked, not done: when the condition holds,
 start ONE fresh worker from the WIP commit and `RUNSTATE.md`, with a new brief (`--note "continue from RUNSTATE.md
 at <sha>"`). A worker whose branch has not moved for an hour and that has not reported is treated the same way.
-New work for a ticket goes to a fresh worker with the whole brief (the original, every later decision, the last
-report, the branch). Message an old worker only when what the work needs lives in it, such as its checkout or a
-process it runs. `BLOCKED` tickets go to the operator together, in one message.
+New work for a ticket goes to a fresh worker with the whole brief. Message an old worker only when the work needs what lives in it: its checkout or a process. `BLOCKED` tickets go to the operator together, in one message.
 
 ## When it drains
 
@@ -62,8 +60,7 @@ Yours to do, never a worker's.
    For `INTEGRATED`, confirm the merge commit is on the integration branch. Write down what nobody verified.
 3. **Decide each one.** Send it back to a fresh worker with the failing line of `check` (a ticket sent back twice
    goes into the question instead), leave it ready with the reason, or offer to merge it. Merging what a worker
-   left ready is the operator's call unless they already said to merge green tickets. Never merge what you could
-   not validate.
+   left ready is the operator's call unless they already said to merge green tickets. Never merge what you could not validate.
 4. **Build once.** Run the full build on `origin/<integration branch>` and report it. A red build does not undo a
    merge.
 5. **Recap, then recommend.** First line: what changed for the user, or what the operator must decide. At most

@@ -125,6 +125,14 @@ def test_a_review_never_stops_to_ask_which_provider_to_use():
     assert "The reviewer must never be why a change is stuck." in review
 
 
+def test_an_orchestrator_that_is_not_claude_does_not_send_its_workers_to_claude():
+    """2026-11-26: two Gemini 4 Neon sessions launched every worker on claude-opus-5-5 because `routing` named only Claude, until
+    the operator wrote 'use neon'."""
+    wave = read("skills/wave/SKILL.md")
+    for needle in ("If you are not a Claude model, workers start on your", "names another; a Claude preference", "in the provider's own term"):
+        assert needle in flat(wave), needle
+
+
 def test_the_orchestrator_names_the_model_and_quota_never_picks_it():
     wave = read("skills/wave/SKILL.md")
     for needle in ("A delegate that is not told its model inherits yours.", "the operator's suggestions in `routing`",

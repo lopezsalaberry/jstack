@@ -12,10 +12,9 @@ missing.
 
 ## The rules card
 
-The rules every session must follow are one short block, the card at the top of `templates/AGENTS.md`. An agent
-follows a rule only if it reads it, and a skill is read only when it is loaded, so the card has to sit in a file the
-harness always loads. `./install.sh --card <file>` writes it, and replaces an older one, in a repo's `AGENTS.md` or in
-the file your harness loads for every repo (one copy there serves every repo on the machine). `doctor` says when
+The rules every session follows are one short block, the card at the top of `templates/AGENTS.md`. A rule works only if it
+is read, and a skill is read only when loaded, so the card sits in a file the harness always loads. `./install.sh --card <file>`
+writes it, and replaces an older one, in a repo's `AGENTS.md` or in the file your harness loads for every repo. `doctor` says when
 no such file has the current card.
 
 ## Settings

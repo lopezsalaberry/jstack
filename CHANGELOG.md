@@ -11,6 +11,7 @@ Format follows Keep a Changelog. Versions are tagged `vX.Y.Z`; install a tag, no
   "Commit, push & PR" button. The `check` gate is unchanged.
 
 ### Changed
+- `wave`: an orchestrator that is not a Claude model starts its workers on its own provider unless the operator's request or an "always" `routing` rule names another, and effort is the provider's own term (`thought_level` for Gemini 4 Neon). Two Neon sessions sent every worker to Claude Opus until told otherwise. A refusal is marked only for quota, rate limit, authentication or silence, as in `review`.
 - `ticket`: for a bug, get one command that fails on it before guessing at the cause.
 - `review`: a harness that cannot start a provider is a start fault, not exhaustion: it is never marked, and the provider's own CLI runs headless first (Cursor's command is in the skill). The review line says "via cli".
 - `quota-probe`: `--until` needs `--reason`. A reviewer was marked out until 1 Dec for a start fault, with no stated cause, and no review used a second provider after 20 Nov.

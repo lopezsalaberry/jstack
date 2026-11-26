@@ -11,6 +11,7 @@ gate), what to do instead of asking, and the status line to end with. When a pat
 a folder or glob in PATHS, matches the `ui_paths` setting, it adds the design block: the tokens to read and the before
 and after pictures to publish.
 
+--effort is the provider's own level name (`effort` for Claude and Codex, `thought_level` for Gemini 4 Neon).
 --model and --effort are required because the brief is where the choice is made: a delegate that is not told its
 model inherits the parent's. They go on the last line, on stderr, for the delegate call; the worker's text does
 not need them. --stop-before-merge is for a repo whose contract has a single integrator. --surface NAME is for a
